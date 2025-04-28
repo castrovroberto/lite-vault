@@ -1,19 +1,17 @@
 package tech.yump.vault.core;
 
 import jakarta.annotation.PostConstruct;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
+import org.springframework.util.StringUtils; // Still used in unseal()
+import tech.yump.vault.config.MssmProperties;
 
 @Slf4j
-@Service // Singleton bean to manage the global seal state
+@Service
 public class SealManager {
 
   // Use AtomicReference for thread-safe updates and visibility
@@ -23,35 +21,45 @@ public class SealManager {
   private static final String AES = "AES";
   private static final int EXPECTED_KEY_LENGTH = 32; // For AES-256
 
-  // Inject the master key from environment/properties (Base64 encoded)
-  // Defaults to null if not provided.
-  @Value("${mssm.master.key.b64:#{null}}")
-  private String initialMasterKeyBase64;
+  // Removed the @Value injection for initialMasterKeyBase64
+
+  private final MssmProperties properties; // Injected via constructor
+
+  // Constructor injection for MssmProperties (Task 9)
+  public SealManager(MssmProperties properties) {
+    this.properties = properties;
+    log.info("Initializing SealManager..."); // Moved log message here for clarity
+  }
 
   /**
-   * Attempts to automatically unseal the vault on startup if a master key is provided
-   * via configuration (environment variable or application property).
+   * Attempts to automatically unseal the vault on startup using the master key
+   * provided via the 'mssm.master.key.b64' configuration property.
    */
   @PostConstruct
-  private void initializeSealStatus() {
-    log.info("Initializing SealManager...");
-    if (StringUtils.hasText(initialMasterKeyBase64)) {
-      log.info("Attempting automatic unseal using provided configuration key...");
+  protected void attemptAutoUnseal() {
+    log.info("Attempting automatic unseal using provided configuration key...");
+    // Get key from the injected MssmProperties object (Task 9)
+    String base64Key = properties.master().b64();
+
+    if (base64Key != null && !base64Key.isBlank()) {
       try {
-        unseal(initialMasterKeyBase64);
-        // Success logged within unseal method
+        unseal(base64Key);
+        // Success is logged within the unseal method now
+        // log.info("Automatic unseal successful."); // Redundant if unseal logs success
       } catch (Exception e) {
         // Log error but remain sealed. Manual unseal might be needed via API later.
         log.error("Automatic unseal failed: {}. Vault remains SEALED.", e.getMessage());
-        // Ensure state is definitely sealed if unseal failed partially (though unlikely here)
-        seal();
+        // Ensure state is definitely sealed if unseal failed partially
+        seal(); // Force seal on failure
       }
     } else {
       log.warn("No initial master key provided via 'mssm.master.key.b64'. Vault remains SEALED.");
       // Ensure state is sealed (should be default, but explicit)
-      seal();
+      seal(); // Force seal if no key provided
     }
   }
+
+  // Removed the redundant initializeSealStatus() @PostConstruct method
 
   /**
    * Attempts to unseal the vault using the provided Base64 encoded master key.
@@ -68,6 +76,7 @@ public class SealManager {
     }
 
     log.info("Attempting to unseal vault...");
+    // Use StringUtils from spring-core, it's already available
     if (!StringUtils.hasText(base64Key)) {
       throw new IllegalArgumentException("Master key cannot be null or empty.");
     }

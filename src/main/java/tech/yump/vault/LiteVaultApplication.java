@@ -1,18 +1,18 @@
 package tech.yump.vault;
 
-import lombok.extern.slf4j.Slf4j; // Add logging
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.EnableConfigurationProperties; // Import
+import tech.yump.vault.config.MssmProperties; // Import
 
-@Slf4j // Add logging annotation
-@SpringBootApplication // Enable auto-configuration, component scanning, etc.
+@Slf4j
+@SpringBootApplication
+@EnableConfigurationProperties(MssmProperties.class) // Enable our properties class
 public class LiteVaultApplication {
 
   public static void main(String[] args) {
-    // Launch the Spring Boot application
     SpringApplication.run(LiteVaultApplication.class, args);
     log.info(">>> LiteVault Application Started <<<");
-    // The web server starts automatically as part of SpringApplication.run()
-    // because spring-boot-starter-web is on the classpath.
   }
 }

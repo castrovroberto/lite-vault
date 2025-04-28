@@ -18,10 +18,10 @@ To provide a secure, centralized system for managing dynamic database credential
   - **Note:** Now retrieves the master key from `SealManager`; cryptographic operations are blocked if the vault is sealed.
 - **Storage:**
   - **Defined:** JSON format (`EncryptedData.java`) for persistent storage (version, Base64 nonce/ciphertext, timestamp).
-  - **Implemented:** Basic persistence layer via `FileSystemStorageBackend`, storing encrypted JSON blobs on local disk. Configurable path via properties.
+  - **Implemented:** Basic persistence layer via `FileSystemStorageBackend`, storing encrypted JSON blobs on local disk. Configurable path via type-safe properties.
 - **Sealing:**
   - **Implemented:** Core seal/unseal logic (`SealManager`). Vault starts `SEALED` by default.
-  - **Implemented:** Automatic unseal attempt on startup using `mssm.master.key.b64` configuration property/environment variable.
+  - **Implemented:** Automatic unseal attempt on startup using `mssm.master.b64` configuration property/environment variable (loaded via type-safe properties).
   - **Implemented:** Cryptographic operations via `EncryptionService` are blocked with `VaultSealedException` when sealed.
 - **API:**
   - **Implemented:** Basic HTTP server setup using Spring Boot Web (embedded Tomcat). Listens on configured HTTPS port (e.g., `8443`).
@@ -31,6 +31,8 @@ To provide a secure, centralized system for managing dynamic database credential
   - **Implemented:** `GET /sys/seal-status` endpoint available, returning the current seal status (`{"sealed": true/false}`).
 - **Authentication/Authorization:** *Not Implemented*
 - **Secrets Engines:** *Not Implemented*
+- **Configuration:**
+  - **Implemented:** Type-safe configuration loading using `@ConfigurationProperties` (`MssmProperties`) with startup validation for required `mssm.*` settings.
 
 ## Security Considerations
 
@@ -39,14 +41,15 @@ To provide a secure, centralized system for managing dynamic database credential
 - **Keystore Security:** The password for the development keystore (`litevault-keystore.p12`) must be provided via the `MSSM_KEYSTORE_PASSWORD` environment variable at runtime.
 - **Sealing:** The master encryption key will not be persisted directly. An unseal mechanism will be required to load the key into memory (F-CORE-140).
   - **Implemented:** The core `SealManager` controls the loading/unloading of the master key into memory. The vault starts sealed and blocks crypto operations.
-  - **Initial Unseal:** Currently relies on providing the master key via the `mssm.master.key.b64` configuration property (e.g., environment variable) for automatic unseal on startup. **Securing this initial key value is critical.**
+  - **Initial Unseal:** Currently relies on providing the master key via the `mssm.master.b64` configuration property (e.g., environment variable) for automatic unseal on startup. **Securing this initial key value is critical.**
 - ~~Temporary Key:~~ The hardcoded key in `EncryptionService` has been removed and replaced by the dynamic key retrieval from `SealManager`.
+- **Configuration Validation:** The application now performs basic validation on required configuration properties at startup (e.g., master key, storage path) and will fail to start if they are missing or invalid.
 
 ## Getting Started
 
 *(Instructions for building/running will go here later)*
 
 **Running (with Auto-Unseal):**
-1.  **Generate Keystore (if not present):** Run the `key-gen.sh` script from the project root (or use the `keytool` command directly) to create `src/main/resources/litevault-keystore.p12`.
-2.  **Set Keystore Password:** Set the environment variable to match the password used in `key-gen.sh`.
+1.  **Generate Keystore (if not present):** Run the `generate-keystore.sh` script (or `key-gen.sh` if not renamed) from the project root (or use the `keytool` command directly) to create `src/main/resources/litevault-keystore.p12` (or `dev-keystore.p12` if using the parameterized script defaults).
+2.  **Set Keystore Password:** Set the environment variable to match the password used when generating the keystore.
     

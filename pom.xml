@@ -38,6 +38,12 @@
       <artifactId>spring-boot-starter-web</artifactId>
     </dependency>
 
+    <!-- Validation Starter for Task 10 -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-validation</artifactId>
+    </dependency>
+
     <!-- BouncyCastle Provider for advanced crypto (Needed for AES-GCM etc.) -->
     <dependency>
       <groupId>org.bouncycastle</groupId>

@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Type-Safe Configuration Loading (Task 9):**
+  - Introduced `@ConfigurationProperties` class (`MssmProperties`) for structured access to `mssm.*` settings.
+  - Used nested records (`MasterKeyProperties`, `StorageProperties`, `FileSystemProperties`) for organization.
+  - Added `spring-boot-starter-validation` dependency.
+  - Implemented startup validation (`@Validated`, `@NotBlank`) for required properties (`mssm.master.b64`, `mssm.storage.filesystem.path`).
+  - Enabled the properties class via `@EnableConfigurationProperties` in `LiteVaultApplication`.
 - **Basic TLS Configuration (Task 8):**
   - Generated a self-signed certificate and keystore (`litevault-keystore.p12`) using `keytool` for local development.
   - Configured `application-dev.yml` to enable HTTPS via `server.ssl.*` properties:
@@ -34,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Manages the vault's seal status (`SEALED` by default).
     - Holds the master `SecretKey` in memory *only* when unsealed (using `AtomicReference`).
     - Provides `seal()`, `unseal(base64Key)`, `isSealed()`, `getSealStatus()`, and `getMasterKey()` methods.
-    - Attempts automatic unseal on startup (`@PostConstruct`) using a Base64 encoded AES-256 key provided via the `mssm.master.key.b64` configuration property (or environment variable).
+    - Attempts automatic unseal on startup (`@PostConstruct`) using a Base64 encoded AES-256 key provided via the `mssm.master.b64` configuration property (or environment variable).
 - **File System Storage Backend (Task 4):**
   - Defined `StorageBackend` interface for persistence operations (`put`, `get`, `delete`).
   - Implemented `FileSystemStorageBackend` as a Spring `@Component`.
@@ -60,12 +66,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added basic SLF4j logging to the service.
 - **Project Setup (Task 1):**
   - Initialized project structure with Maven and Spring Boot parent.
-  - Configured `pom.xml` with Java 21, Spring Boot dependencies (Web, Test), Lombok, and BouncyCastle.
+  - Configured `pom.xml` with Java 21, Spring Boot dependencies (Web, Validation, Test), Lombok, and BouncyCastle.
   - Added standard `.gitignore` file.
   - Created basic `src/main/java` and `src/test/java` directory structures.
   - Added placeholder `LiteVaultApplication` and `LiteVaultApplicationTest`.
 
 ### Changed
+- **Configuration Usage:** Refactored `SealManager` and `FileSystemStorageBackend` to inject and use type-safe `MssmProperties` instead of `@Value` or direct property reading.
+- **Configuration Structure:** Adjusted `application-dev.yml` to match the structure expected by `MssmProperties` (e.g., `mssm.master.b64` instead of `mssm.master.key.b64`).
 - **API Server:** Now runs on HTTPS using the configured port (`8443` in `application-dev.yml`). HTTP is disabled by default when SSL is enabled this way.
 - **Encryption Service:**
   - Removed the temporary, hardcoded AES key.
@@ -76,9 +84,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Injected `SealManager` via constructor.
 
 ### Security
+- **Configuration Validation:** Added startup validation for required configuration properties. The application now fails fast if `mssm.master.b64` or `mssm.storage.filesystem.path` are missing or invalid.
 - **Encryption in Transit:** API communication is now encrypted using TLS 1.2/1.3 (NFR-SEC-110). **Note:** Uses a self-signed certificate suitable only for development/testing.
 - **Keystore Password:** The keystore password must be provided via the `MSSM_KEYSTORE_PASSWORD` environment variable at runtime.
 - **Master Key Management:** The master encryption key is no longer hardcoded in `EncryptionService`. It is now managed by `SealManager` and loaded into memory only when the vault is unsealed.
-- **Initial Unseal:** The initial unseal process relies on the `mssm.master.key.b64` configuration property (typically set via an environment variable). **Securing this initial key value is critical.** The vault remains sealed if this key is not provided or is invalid. Future work will involve implementing a more robust unseal mechanism (e.g., Shamir's Secret Sharing).
+- **Initial Unseal:** The initial unseal process relies on the `mssm.master.b64` configuration property (typically set via an environment variable). **Securing this initial key value is critical.** The vault remains sealed if this key is not provided or is invalid. Future work will involve implementing a more robust unseal mechanism (e.g., Shamir's Secret Sharing).
 
  ---

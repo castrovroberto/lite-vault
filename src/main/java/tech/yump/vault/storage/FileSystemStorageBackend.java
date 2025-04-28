@@ -16,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import tech.yump.vault.config.MssmProperties;
 
 @Slf4j
 @Component // Register as a Spring component
@@ -23,16 +24,16 @@ public class FileSystemStorageBackend implements StorageBackend {
 
   private final Path basePath;
   private final ObjectMapper objectMapper;
+  private final MssmProperties properties;
 
-  // Inject base path from application properties (Task 9 preview)
+
   public FileSystemStorageBackend(
-      @Value("${mssm.storage.filesystem.path:./vault-data}") String basePathStr, // Default to ./vault-data
-      ObjectMapper objectMapper) { // Inject Spring's default ObjectMapper
-    if (!StringUtils.hasText(basePathStr)) {
-      throw new IllegalArgumentException("Base storage path (mssm.storage.filesystem.path) cannot be empty.");
-    }
-    this.basePath = Paths.get(basePathStr).toAbsolutePath(); // Resolve to absolute path
+      final ObjectMapper objectMapper,
+      final MssmProperties properties
+  ) {
     this.objectMapper = objectMapper;
+    this.properties = properties;
+    this.basePath = Paths.get(properties.storage().filesystem().path()).toAbsolutePath();
     log.info("FileSystemStorageBackend initialized with base path: {}", this.basePath);
   }
 
