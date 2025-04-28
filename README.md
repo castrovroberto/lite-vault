@@ -16,8 +16,8 @@ To provide a secure, centralized system for managing dynamic database credential
 - **Core Encryption:**
     - **Implemented:** Foundational cryptographic layer using **AES-256-GCM** (`EncryptionService.java`). Provides authenticated encryption for data at rest.
     - **Note:** Currently uses a temporary, hardcoded key for testing (See Security section).
-- **Storage:** *Not Implemented*
-- **Sealing:** *Not Implemented*
+- **Storage:** *Defined* JSON format (`EncryptedData.java`) for persistent storage, including version, Base64 nonce, Base64 cyphertext, and timestamp. Actual storage backend *not implemented*.
+- **Sealing:** *Not Implemented
 - **API:** *Not Implemented*
 - **Authentication/Authorization:** *Not Implemented*
 - **Secrets Engines:** *Not Implemented*
@@ -39,7 +39,7 @@ Based on `project/mssm-atomic-tasks-v1-0.md`:
 
 - [x] **Task 1:** Initialize Project & Basic Structure
 - [x] **Task 2:** Implement Core Encryption/Decryption Logic (AES-GCM)
-- [ ] **Task 3:** Define Encrypted Storage Format
+- [x] **Task 3:** Define Encrypted Storage Format
 - [ ] **Task 4:** Implement Basic File System Storage Backend
 - [ ] **Task 5:** Implement Core Seal/Unseal Logic
 - [ ] **Task 6:** Set Up Minimal HTTP Server & Routing
