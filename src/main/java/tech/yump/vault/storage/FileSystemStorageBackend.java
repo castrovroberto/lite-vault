@@ -65,8 +65,9 @@ public class FileSystemStorageBackend implements StorageBackend {
 
   @Override
   public void put(String key, EncryptedData data) throws StorageException {
+    // FIX: Use StringUtils.hasText for key validation
     if (!StringUtils.hasText(key) || data == null) {
-      throw new IllegalArgumentException("Key and data cannot be null or empty for put operation.");
+      throw new IllegalArgumentException("Key cannot be null or empty, and data cannot be null for put operation.");
     }
     Path filePath = resolveFilePath(key);
     log.debug("Putting data for key '{}' at path: {}", key, filePath);
@@ -88,6 +89,7 @@ public class FileSystemStorageBackend implements StorageBackend {
 
   @Override
   public Optional<EncryptedData> get(String key) throws StorageException {
+    // FIX: Use StringUtils.hasText for key validation
     if (!StringUtils.hasText(key)) {
       throw new IllegalArgumentException("Key cannot be null or empty for get operation.");
     }
@@ -115,6 +117,7 @@ public class FileSystemStorageBackend implements StorageBackend {
 
   @Override
   public void delete(String key) throws StorageException {
+    // FIX: Use StringUtils.hasText for key validation
     if (!StringUtils.hasText(key)) {
       throw new IllegalArgumentException("Key cannot be null or empty for delete operation.");
     }
@@ -150,6 +153,7 @@ public class FileSystemStorageBackend implements StorageBackend {
    */
   private Path resolveFilePath(String key) {
     // Basic sanitization: replace backslashes, remove leading/trailing slashes, disallow ".."
+    // FIX: Added check for empty key here too, although StringUtils.hasText should catch it earlier
     String sanitizedKey = key.replace('\\', '/').trim();
     if (sanitizedKey.startsWith("/") || sanitizedKey.endsWith("/") || sanitizedKey.contains("..") || sanitizedKey.isEmpty()) {
       log.error("Invalid storage key provided: '{}'", key);

@@ -1,5 +1,6 @@
 package tech.yump.vault.storage;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty; // Optional but good practice
 import java.time.Instant; // Use Instant for timestamps
 import java.util.Base64; // For Base64 encoding/decoding logic (used later)
@@ -79,6 +80,7 @@ public class EncryptedData {
    * @return Raw nonce bytes.
    * @throws IllegalArgumentException if nonceBase64 is null or not valid Base64.
    */
+  @JsonIgnore
   public byte[] getNonceBytes() {
     if (this.nonceBase64 == null) {
       throw new IllegalStateException("Nonce Base64 string is null.");
@@ -92,6 +94,7 @@ public class EncryptedData {
    * @return Raw ciphertext bytes.
    * @throws IllegalArgumentException if ciphertextBase64 is null or not valid Base64.
    */
+  @JsonIgnore
   public byte[] getCiphertextBytes() {
     if (this.ciphertextBase64 == null) {
       throw new IllegalStateException("Ciphertext Base64 string is null.");

@@ -32,7 +32,7 @@ public class EncryptionService {
 
   private static final String ALGORITHM = "AES/GCM/NoPadding";
   private static final int TAG_LENGTH_BIT = 128; // Standard for GCM
-  private static final int NONCE_LENGTH_BYTE = 12; // Recommended for GCM
+  static final int NONCE_LENGTH_BYTE = 12; // Recommended for GCM
 
   private final SecureRandom secureRandom = new SecureRandom();
   private final SealManager sealManager;
