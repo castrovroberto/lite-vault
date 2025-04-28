@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Basic Static Token Authentication (Task 11):**
+  - Added `spring-boot-starter-security` dependency.
+  - Updated `MssmProperties` to include `mssm.auth.static-tokens` configuration (nested records `AuthProperties`, `StaticTokenAuthProperties` with `enabled` flag, `Set<String> tokens`).
+  - Implemented custom validation (`@ValidStaticTokenConfig`, `StaticTokenConfigValidator`) to require tokens only if static auth is enabled.
+  - Implemented `StaticTokenAuthFilter` to read the `X-Vault-Token` header, validate against configured tokens, and set authentication context (`UsernamePasswordAuthenticationToken` with `ROLE_TOKEN_AUTH`) using `SecurityContextHolder`. Includes `shouldNotFilter` optimization.
+  - Implemented `SecurityConfig` using `@EnableWebSecurity`:
+    - Configured stateless session management (`SessionCreationPolicy.STATELESS`).
+    - Disabled CSRF, form login, logout.
+    - Added `StaticTokenAuthFilter` bean and included it in the filter chain.
+    - Configured authorization rules: `/sys/seal-status` and `/` are public (`permitAll`), all other requests require authentication (`authenticated`).
+    - Added conditional logic to apply security only if `mssm.auth.static-tokens.enabled=true`.
+  - Added example static token configuration to `application-dev.yml`.
 - **Unit Tests (Task 10):**
   - Implemented unit tests for `EncryptionService` using JUnit 5 and Mockito.
     - Verified encrypt/decrypt round trip.
@@ -83,6 +95,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added placeholder `LiteVaultApplication` and `LiteVaultApplicationTest`.
 
 ### Changed
+- **API Access:** Most API endpoints now require authentication via the `X-Vault-Token` header when static token auth is enabled. `/` and `/sys/seal-status` remain public.
 - **Configuration Usage:** Refactored `SealManager` and `FileSystemStorageBackend` to inject and use type-safe `MssmProperties` instead of `@Value` or direct property reading.
 - **Configuration Structure:** Adjusted `application-dev.yml` to match the structure expected by `MssmProperties` (e.g., `mssm.master.b64` instead of `mssm.master.key.b64`).
 - **API Server:** Now runs on HTTPS using the configured port (`8443` in `application-dev.yml`). HTTP is disabled by default when SSL is enabled this way.
@@ -95,13 +108,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Injected `SealManager` via constructor.
 
 ### Fixed
+- **Configuration:** Corrected nested record type references (`MssmProperties.AuthProperties.StaticTokenAuthProperties`) in `StaticTokenAuthFilter` and `SecurityConfig`.
+- **Testing:** Updated `FileSystemStorageBackendTest` to correctly instantiate `MssmProperties` with the new required `AuthProperties` argument.
 - **JSON Serialization:** Added `@JsonIgnore` to `getNonceBytes()` and `getCiphertextBytes()` methods in `EncryptedData` to prevent them from being incorrectly included in the JSON output by Jackson during storage, resolving `UnrecognizedPropertyException` during deserialization.
 
 ### Security
-- **Configuration Validation:** Added startup validation for required configuration properties. The application now fails fast if `mssm.master.b64` or `mssm.storage.filesystem.path` are missing or invalid.
+- **API Authentication (F-CORE-110):** Implemented basic static token authentication. Requests to protected endpoints without a valid `X-Vault-Token` will be rejected (typically with HTTP 401/403). Static tokens configured in `mssm.auth.static-tokens.tokens` must be kept secret.
+- **Configuration Validation:** Added startup validation for required configuration properties. The application now fails fast if `mssm.master.b64` or `mssm.storage.filesystem.path` are missing or invalid. Also added conditional validation for static tokens.
 - **Encryption in Transit:** API communication is now encrypted using TLS 1.2/1.3 (NFR-SEC-110). **Note:** Uses a self-signed certificate suitable only for development/testing.
 - **Keystore Password:** The keystore password must be provided via the `MSSM_KEYSTORE_PASSWORD` environment variable at runtime.
 - **Master Key Management:** The master encryption key is no longer hardcoded in `EncryptionService`. It is now managed by `SealManager` and loaded into memory only when the vault is unsealed.
 - **Initial Unseal:** The initial unseal process relies on the `mssm.master.b64` configuration property (typically set via an environment variable). **Securing this initial key value is critical.** The vault remains sealed if this key is not provided or is invalid. Future work will involve implementing a more robust unseal mechanism (e.g., Shamir's Secret Sharing).
 
- ---
+---

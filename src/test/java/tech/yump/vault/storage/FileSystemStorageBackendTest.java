@@ -3,6 +3,7 @@ package tech.yump.vault.storage;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule; // Import JavaTimeModule
 import java.time.Instant;
+import java.util.Collections;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -33,14 +34,23 @@ class FileSystemStorageBackendTest {
   @BeforeEach
   void setUp() {
     objectMapper = new ObjectMapper();
-    // FIX 1: Register JavaTimeModule to handle Instant
     objectMapper.registerModule(new JavaTimeModule());
 
     MssmProperties.StorageProperties.FileSystemProperties fsProps =
         new MssmProperties.StorageProperties.FileSystemProperties(tempStorageDir.toString());
+
     MssmProperties.StorageProperties storageProps = new MssmProperties.StorageProperties(fsProps);
+
     MssmProperties.MasterKeyProperties masterKeyProps = new MssmProperties.MasterKeyProperties("dummy-base64-key-for-test-setup");
-    testProperties = new MssmProperties(masterKeyProps, storageProps);
+
+    MssmProperties.AuthProperties.StaticTokenAuthProperties dummyStaticTokenProps =
+        new MssmProperties.AuthProperties.StaticTokenAuthProperties(false, Collections.emptySet()); // enabled=false, empty tokens
+
+    MssmProperties.AuthProperties dummyAuthProps =
+        new MssmProperties.AuthProperties(dummyStaticTokenProps);
+
+    testProperties = new MssmProperties(masterKeyProps, storageProps, dummyAuthProps);
+
     storageBackend = new FileSystemStorageBackend(objectMapper, testProperties);
 
     String nonceB64 = Base64.getEncoder().encodeToString("test-nonce-123".getBytes(StandardCharsets.UTF_8));
@@ -49,10 +59,10 @@ class FileSystemStorageBackendTest {
     Instant timestamp = Instant.now();
 
     testData = new EncryptedData(
-        version,          // Arg 1: int version
-        nonceB64,         // Arg 2: String nonceBase64
-        ciphertextB64,    // Arg 3: String ciphertextBase64
-        timestamp         // Arg 4: Instant timestamp
+        version,
+        nonceB64,
+        ciphertextB64,
+        timestamp
     );
   }
 

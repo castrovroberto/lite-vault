@@ -13,6 +13,7 @@ To provide a secure, centralized system for managing dynamic database credential
 ## Current Status & Features (In Progress)
 
 - **Project Setup:** Maven project initialized with Java 21 and Spring Boot. Basic directory structure and `.gitignore` in place.
+- **Dependencies:** Includes Spring Boot starters for Web, Validation, Security. Includes Lombok and BouncyCastle.
 - **Core Encryption:**
   - **Implemented:** Foundational cryptographic layer using **AES-256-GCM** (`EncryptionService.java`). Provides authenticated encryption for data at rest.
   - **Note:** Now retrieves the master key from `SealManager`; cryptographic operations are blocked if the vault is sealed.
@@ -29,10 +30,12 @@ To provide a secure, centralized system for managing dynamic database credential
   - **Implemented:** `RootController` created in `tech.yump.vault.api`.
   - **Implemented:** Basic `GET /` endpoint available, returning a simple JSON status message.
   - **Implemented:** `GET /sys/seal-status` endpoint available, returning the current seal status (`{"sealed": true/false}`).
-- **Authentication/Authorization:** *Not Implemented*
+- **Authentication/Authorization:**
+  - **Implemented (Basic):** Static Token Authentication (Task 11). API requests (except `/` and `/sys/seal-status`) require a valid `X-Vault-Token` header matching a token configured in `mssm.auth.static-tokens.tokens` when enabled. Uses Spring Security for enforcement. (F-CORE-110)
 - **Secrets Engines:** *Not Implemented*
 - **Configuration:**
   - **Implemented:** Type-safe configuration loading using `@ConfigurationProperties` (`MssmProperties`) with startup validation for required `mssm.*` settings.
+  - **Implemented:** Configuration for static authentication tokens (`mssm.auth.static-tokens`) with conditional validation (tokens required only if enabled).
 - **Testing:**
   - **Implemented:** Unit tests for `EncryptionService` and `FileSystemStorageBackend` covering core functionality, edge cases, and error handling.
 
@@ -44,8 +47,8 @@ To provide a secure, centralized system for managing dynamic database credential
 - **Sealing:** The master encryption key will not be persisted directly. An unseal mechanism will be required to load the key into memory (F-CORE-140).
   - **Implemented:** The core `SealManager` controls the loading/unloading of the master key into memory. The vault starts sealed and blocks crypto operations.
   - **Initial Unseal:** Currently relies on providing the master key via the `mssm.master.b64` configuration property (e.g., environment variable) for automatic unseal on startup. **Securing this initial key value is critical.**
-- ~~Temporary Key:~~ The hardcoded key in `EncryptionService` has been removed and replaced by the dynamic key retrieval from `SealManager`.
-- **Configuration Validation:** The application now performs basic validation on required configuration properties at startup (e.g., master key, storage path) and will fail to start if they are missing or invalid.
+- **Authentication:** API access is now protected by static tokens when enabled (`mssm.auth.static-tokens.enabled=true`). Clients must provide a valid token in the `X-Vault-Token` header. These tokens should be treated as sensitive credentials.
+- **Configuration Validation:** The application now performs basic validation on required configuration properties at startup (e.g., master key, storage path) and will fail to start if they are missing or invalid. Also includes conditional validation for static tokens (tokens required only if enabled).
 
 ## Getting Started
 
@@ -54,4 +57,4 @@ To provide a secure, centralized system for managing dynamic database credential
 **Running (with Auto-Unseal):**
 1.  **Generate Keystore (if not present):** Run the `generate-keystore.sh` script (or `key-gen.sh` if not renamed) from the project root (or use the `keytool` command directly) to create `src/main/resources/litevault-keystore.p12` (or `dev-keystore.p12` if using the parameterized script defaults).
 2.  **Set Keystore Password:** Set the environment variable to match the password used when generating the keystore.
-    
+3.  **Set Master Key:** Securely generate and set the master key environment variable.
