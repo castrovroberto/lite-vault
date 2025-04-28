@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Basic TLS Configuration (Task 8):**
+  - Generated a self-signed certificate and keystore (`litevault-keystore.p12`) using `keytool` for local development.
+  - Configured `application-dev.yml` to enable HTTPS via `server.ssl.*` properties:
+    - `enabled: true`
+    - `key-store: classpath:litevault-keystore.p12`
+    - `key-store-password: ${MSSM_KEYSTORE_PASSWORD}` (Requires env var)
+    - `key-store-type: PKCS12`
+    - `key-alias: litevault`
+  - Restricted enabled TLS protocols to `TLSv1.3,TLSv1.2` (NFR-SEC-110).
+  - Added `*.p12` pattern to `.gitignore`.
 - **Seal Status API Endpoint (Task 7):**
   - Implemented `GET /sys/seal-status` endpoint in `RootController`.
   - Injects `SealManager` to query the current seal state.
@@ -17,7 +27,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Created `api` package (`tech.yump.vault.api`) for REST controllers.
   - Implemented `RootController` (`@RestController`) with a basic `GET /` endpoint.
   - The root endpoint returns a simple JSON status message (`{"message": "...", "status": "OK"}`).
-  - Configured server port via `application.yml` (e.g., `server.port=8081`).
 - **Core Seal/Unseal Mechanism (Task 5):**
   - Introduced `SealStatus` enum (`SEALED`, `UNSEALED`) in `tech.yump.vault.core`.
   - Added `VaultSealedException` thrown when operations requiring the master key are attempted while sealed.
@@ -57,6 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added placeholder `LiteVaultApplication` and `LiteVaultApplicationTest`.
 
 ### Changed
+- **API Server:** Now runs on HTTPS using the configured port (`8443` in `application-dev.yml`). HTTP is disabled by default when SSL is enabled this way.
 - **Encryption Service:**
   - Removed the temporary, hardcoded AES key.
   - Now depends on `SealManager` via constructor injection.
@@ -66,6 +76,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Injected `SealManager` via constructor.
 
 ### Security
+- **Encryption in Transit:** API communication is now encrypted using TLS 1.2/1.3 (NFR-SEC-110). **Note:** Uses a self-signed certificate suitable only for development/testing.
+- **Keystore Password:** The keystore password must be provided via the `MSSM_KEYSTORE_PASSWORD` environment variable at runtime.
 - **Master Key Management:** The master encryption key is no longer hardcoded in `EncryptionService`. It is now managed by `SealManager` and loaded into memory only when the vault is unsealed.
 - **Initial Unseal:** The initial unseal process relies on the `mssm.master.key.b64` configuration property (typically set via an environment variable). **Securing this initial key value is critical.** The vault remains sealed if this key is not provided or is invalid. Future work will involve implementing a more robust unseal mechanism (e.g., Shamir's Secret Sharing).
 

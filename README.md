@@ -24,7 +24,8 @@ To provide a secure, centralized system for managing dynamic database credential
   - **Implemented:** Automatic unseal attempt on startup using `mssm.master.key.b64` configuration property/environment variable.
   - **Implemented:** Cryptographic operations via `EncryptionService` are blocked with `VaultSealedException` when sealed.
 - **API:**
-  - **Implemented:** Basic HTTP server setup using Spring Boot Web (embedded Tomcat). Listens on configured port (e.g., 8081).
+  - **Implemented:** Basic HTTP server setup using Spring Boot Web (embedded Tomcat). Listens on configured HTTPS port (e.g., `8443`).
+  - **Implemented:** Basic TLS (HTTPS) enabled using a self-signed certificate (`litevault-keystore.p12`) for development.
   - **Implemented:** `RootController` created in `tech.yump.vault.api`.
   - **Implemented:** Basic `GET /` endpoint available, returning a simple JSON status message.
   - **Implemented:** `GET /sys/seal-status` endpoint available, returning the current seal status (`{"sealed": true/false}`).
@@ -34,8 +35,9 @@ To provide a secure, centralized system for managing dynamic database credential
 ## Security Considerations
 
 - **Encryption at Rest:** Core data is encrypted using AES-256-GCM (`EncryptionService`) and stored persistently as JSON files via the `FileSystemStorageBackend` (NFR-SEC-100, F-CORE-100). Encryption requires the vault to be unsealed.
-- **Encryption in Transit:** API communication will be secured via TLS 1.2+ (NFR-SEC-110). *(Planned)*
-- **Sealing:** The master encryption key will not be persisted directly. An unseal mechanism will be required to load the key into memory (F-CORE-140). *(Planned)*
+- **Encryption in Transit:** **Implemented (Basic):** API communication secured via TLS 1.2+ using a self-signed certificate (NFR-SEC-110). **Note:** This self-signed certificate is suitable only for local development and testing. Production deployments require a certificate signed by a trusted Certificate Authority (CA).
+- **Keystore Security:** The password for the development keystore (`litevault-keystore.p12`) must be provided via the `MSSM_KEYSTORE_PASSWORD` environment variable at runtime.
+- **Sealing:** The master encryption key will not be persisted directly. An unseal mechanism will be required to load the key into memory (F-CORE-140).
   - **Implemented:** The core `SealManager` controls the loading/unloading of the master key into memory. The vault starts sealed and blocks crypto operations.
   - **Initial Unseal:** Currently relies on providing the master key via the `mssm.master.key.b64` configuration property (e.g., environment variable) for automatic unseal on startup. **Securing this initial key value is critical.**
 - ~~Temporary Key:~~ The hardcoded key in `EncryptionService` has been removed and replaced by the dynamic key retrieval from `SealManager`.
@@ -45,32 +47,6 @@ To provide a secure, centralized system for managing dynamic database credential
 *(Instructions for building/running will go here later)*
 
 **Running (with Auto-Unseal):**
-1. Generate a 32-byte AES key and Base64 encode it: `openssl rand 32 | base64`
-2. Set the environment variable: `export MSSM_MASTER_KEY_B64="YOUR_GENERATED_BASE64_KEY_HERE"`
-3. Run the application (e.g., via `mvn spring-boot:run` or from your IDE). The application should log that it has successfully unsealed and the server has started.
-4. Access the root endpoint (assuming port 8081): `curl http://localhost:8081/`
-5. Check the seal status: `curl http://localhost:8081/sys/seal-status` (Should return `{"sealed":false}`)
-
-**Running (Sealed):**
-1. Ensure the `MSSM_MASTER_KEY_B64` environment variable is **not** set or is invalid.
-2. Run the application. It should log that it remains sealed.
-3. Check the seal status: `curl http://localhost:8081/sys/seal-status` (Should return `{"sealed":true}`)
-
-## Project Roadmap (Atomic Tasks - Phase 1)
-
-Based on `project/mssm-atomic-tasks-v1-0.md`:
-
-- [x] **Task 1:** Initialize Project & Basic Structure
-- [x] **Task 2:** Implement Core Encryption/Decryption Logic (AES-GCM)
-- [x] **Task 3:** Define Encrypted Storage Format
-- [x] **Task 4:** Implement Basic File System Storage Backend
-- [x] **Task 5:** Implement Core Seal/Unseal Logic
-- [x] **Task 6:** Set Up Minimal HTTP Server & Routing
-- [x] **Task 7:** Create `/sys/seal-status` API Endpoint
-- [ ] **Task 8:** Configure Basic TLS for API Server
-- [ ] **Task 9:** Implement Basic Configuration Loading
-- [ ] **Task 10:** Write Unit Tests for Encryption & Storage
-
-*(Keep other sections like Contributing, License etc. if you have them)*
-
- ---
+1.  **Generate Keystore (if not present):** Run the `key-gen.sh` script from the project root (or use the `keytool` command directly) to create `src/main/resources/litevault-keystore.p12`.
+2.  **Set Keystore Password:** Set the environment variable to match the password used in `key-gen.sh`.
+    
