@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Unit Tests (Task 10):**
+  - Implemented unit tests for `EncryptionService` using JUnit 5 and Mockito.
+    - Verified encrypt/decrypt round trip.
+    - Tested behavior when vault is sealed (using mocked `SealManager`).
+    - Tested handling of tampered data (invalid GCM tag).
+    - Tested handling of null/invalid inputs.
+  - Implemented unit tests for `FileSystemStorageBackend` using JUnit 5 and `@TempDir`.
+    - Verified `put`, `get`, `delete` operations.
+    - Tested handling of non-existent keys and overwrites.
+    - Tested validation against path traversal keys.
+    - Tested handling of null/empty inputs.
 - **Type-Safe Configuration Loading (Task 9):**
   - Introduced `@ConfigurationProperties` class (`MssmProperties`) for structured access to `mssm.*` settings.
   - Used nested records (`MasterKeyProperties`, `StorageProperties`, `FileSystemProperties`) for organization.
@@ -82,6 +93,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Propagates `VaultSealedException` if cryptographic operations are attempted while the vault is sealed.
 - **Root Controller:**
   - Injected `SealManager` via constructor.
+
+### Fixed
+- **JSON Serialization:** Added `@JsonIgnore` to `getNonceBytes()` and `getCiphertextBytes()` methods in `EncryptedData` to prevent them from being incorrectly included in the JSON output by Jackson during storage, resolving `UnrecognizedPropertyException` during deserialization.
 
 ### Security
 - **Configuration Validation:** Added startup validation for required configuration properties. The application now fails fast if `mssm.master.b64` or `mssm.storage.filesystem.path` are missing or invalid.
