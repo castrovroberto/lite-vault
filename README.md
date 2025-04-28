@@ -14,25 +14,39 @@ To provide a secure, centralized system for managing dynamic database credential
 
 - **Project Setup:** Maven project initialized with Java 21 and Spring Boot. Basic directory structure and `.gitignore` in place.
 - **Core Encryption:**
-    - **Implemented:** Foundational cryptographic layer using **AES-256-GCM** (`EncryptionService.java`). Provides authenticated encryption for data at rest.
-    - **Note:** Currently uses a temporary, hardcoded key for testing (See Security section).
-- **Storage:** JSON format (`EncryptedData.java`) for persistent storage (version, Base64 nonce/cyphertext, timestamp).
-    - **Implemented:** Basic persistence layer via `FileSystemStorageBackend`, storing encrypted JSON blobs on local disk. Configurable path via properties. 
-- **Sealing:** *Not Implemented
+  - **Implemented:** Foundational cryptographic layer using **AES-256-GCM** (`EncryptionService.java`). Provides authenticated encryption for data at rest.
+  - **Note:** Now retrieves the master key from `SealManager`; cryptographic operations are blocked if the vault is sealed.
+- **Storage:**
+  - **Defined:** JSON format (`EncryptedData.java`) for persistent storage (version, Base64 nonce/ciphertext, timestamp).
+  - **Implemented:** Basic persistence layer via `FileSystemStorageBackend`, storing encrypted JSON blobs on local disk. Configurable path via properties.
+
+- **Sealing:**
+  - **Implemented:** Core seal/unseal logic (`SealManager`). Vault starts `SEALED` by default.
+  - **Implemented:** Automatic unseal attempt on startup using `mssm.master.key.b64` configuration property/environment variable.
+  - **Implemented:** Cryptographic operations via `EncryptionService` are blocked with `VaultSealedException` when sealed.
 - **API:** *Not Implemented*
 - **Authentication/Authorization:** *Not Implemented*
 - **Secrets Engines:** *Not Implemented*
 
 ## Security Considerations
 
-- **Encryption at Rest:** Core data is encrypted using AES-256-GCM `EncryptionService` and stored persistengly as JSON files via the `FileSystemStorageBackend` (NFR-SEC-100, F-CORE-100).
+- **Encryption at Rest:** Core data is encrypted using AES-256-GCM (`EncryptionService`) and stored persistently as JSON files via the `FileSystemStorageBackend` (NFR-SEC-100, F-CORE-100). Encryption requires the vault to be unsealed.
 - **Encryption in Transit:** API communication will be secured via TLS 1.2+ (NFR-SEC-110). *(Planned)*
 - **Sealing:** The master encryption key will not be persisted directly. An unseal mechanism will be required to load the key into memory (F-CORE-140). *(Planned)*
-- **Temporary Key:** The current `EncryptionService` uses a **temporary, insecure, hardcoded key** for development. This is a critical placeholder and **must** be replaced by the secure sealing/unsealing mechanism (Task 5).
+  - **Implemented:** The core `SealManager` controls the loading/unloading of the master key into memory. The vault starts sealed and blocks crypto operations.
+  - **Initial Unseal:** Currently relies on providing the master key via the `mssm.master.key.b64` configuration property (e.g., environment variable) for automatic unseal on startup. **Securing this initial key value is critical.**
+- ~~Temporary Key:~~ The hardcoded key in `EncryptionService` has been removed and replaced by the dynamic key retrieval from `SealManager`.
 
 ## Getting Started
 
 *(Instructions for building/running will go here later)*
+
+**Running (with Auto-Unseal):**
+1. Generate a 32-byte AES key and Base64 encode it: `openssl rand 32 | base64`
+2. Set the environment variable: `export MSSM_MASTER_KEY_B64="YOUR_GENERATED_BASE64_KEY_HERE"`
+3. Run the application (e.g., via `mvn spring-boot:run` or from your IDE). The application should log that it has successfully unsealed.
+
++*(If the variable is not set or invalid, the application will start but remain sealed).*
 
 ## Project Roadmap (Atomic Tasks - Phase 1)
 
@@ -42,7 +56,7 @@ Based on `project/mssm-atomic-tasks-v1-0.md`:
 - [x] **Task 2:** Implement Core Encryption/Decryption Logic (AES-GCM)
 - [x] **Task 3:** Define Encrypted Storage Format
 - [x] **Task 4:** Implement Basic File System Storage Backend
-- [ ] **Task 5:** Implement Core Seal/Unseal Logic
+- [x] **Task 5:** Implement Core Seal/Unseal Logic
 - [ ] **Task 6:** Set Up Minimal HTTP Server & Routing
 - [ ] **Task 7:** Create `/sys/seal-status` API Endpoint
 - [ ] **Task 8:** Configure Basic TLS for API Server
@@ -51,4 +65,4 @@ Based on `project/mssm-atomic-tasks-v1-0.md`:
 
 *(Keep other sections like Contributing, License etc. if you have them)*
 
----
+ ---

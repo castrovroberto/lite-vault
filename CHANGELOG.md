@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Core Seal/Unseal Mechanism (Task 5):**
+  - Introduced `SealStatus` enum (`SEALED`, `UNSEALED`) in `tech.yump.vault.core`.
+  - Added `VaultSealedException` thrown when operations requiring the master key are attempted while sealed.
+  - Implemented `SealManager` service (`@Service`) in `tech.yump.vault.core`:
+    - Manages the vault's seal status (`SEALED` by default).
+    - Holds the master `SecretKey` in memory *only* when unsealed (using `AtomicReference`).
+    - Provides `seal()`, `unseal(base64Key)`, `isSealed()`, `getSealStatus()`, and `getMasterKey()` methods.
+    - Attempts automatic unseal on startup (`@PostConstruct`) using a Base64 encoded AES-256 key provided via the `mssm.master.key.b64` configuration property (or environment variable).
 - **File System Storage Backend (Task 4):**
   - Defined `StorageBackend` interface for persistence operations (`put`, `get`, `delete`).
   - Implemented `FileSystemStorageBackend` as a Spring `@Component`.
@@ -23,20 +31,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Uses Base64 encoding for nonce and ciphertext within the JSON structure.
   - Added convenience methods in `EncryptedData` for Base64 encoding/decoding.
   - Leverages Jackson (via Spring Boot Web) for future JSON serialization/deserialization.
+    +- **Core Encryption Service (Task 2):** // Moved details here as it was part of initial setup description before
   - Implemented `EncryptionService.java` providing core cryptographic operations.
   - Uses **AES-256-GCM** for authenticated encryption (AEAD), fulfilling NFR-SEC-100.
-  - Generates a unique 12-byte nonce per encryption operation, prepended to the ciphertext.
+  - Generates a unique 12-byte nonce per encryption operation.
   - Handles nonce extraction and GCM tag verification during decryption.
   - Added custom `EncryptionService.EncryptionException` for cryptographic errors.
   - Registered BouncyCastle security provider (`bcprov-jdk18on`) for JCE operations.
   - Added basic SLF4j logging to the service.
+    +- **Project Setup (Task 1):** // Moved details here as it was part of initial setup description before
   - Initialized project structure with Maven and Spring Boot parent.
   - Configured `pom.xml` with Java 21, Spring Boot dependencies (Web, Test), Lombok, and BouncyCastle.
   - Added standard `.gitignore` file.
   - Created basic `src/main/java` and `src/test/java` directory structures.
   - Added placeholder `LiteVaultApplication` and `LiteVaultApplicationTest`.
 
-### Security
+### Changed
+- **Encryption Service:**
+  - Removed the temporary, hardcoded AES key.
+  - Now depends on `SealManager` via constructor injection.
+  - Retrieves the master key dynamically using `sealManager.getMasterKey()` before performing encryption or decryption.
+  - Propagates `VaultSealedException` if cryptographic operations are attempted while the vault is sealed.
 
+### Security
+- **Master Key Management:** The master encryption key is no longer hardcoded in `EncryptionService`. It is now managed by `SealManager` and loaded into memory only when the vault is unsealed.
+- **Initial Unseal:** The initial unseal process relies on the `mssm.master.key.b64` configuration property (typically set via an environment variable). **Securing this initial key value is critical.** The vault remains sealed if this key is not provided or is invalid. Future work will involve implementing a more robust unseal mechanism (e.g., Shamir's Secret Sharing).
 
  ---

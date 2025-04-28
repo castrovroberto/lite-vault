@@ -16,34 +16,31 @@ import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import lombok.extern.slf4j.Slf4j;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.springframework.stereotype.Service;
+import tech.yump.vault.core.SealManager;
 
 @Slf4j
+@Service
 public class EncryptionService {
 
   static {
     if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
       Security.addProvider(new BouncyCastleProvider());
+      log.info("BouncyCastle provider added successfully.");
     }
   }
 
   private static final String ALGORITHM = "AES/GCM/NoPadding";
   private static final int TAG_LENGTH_BIT = 128; // Standard for GCM
   private static final int NONCE_LENGTH_BYTE = 12; // Recommended for GCM
-  private static final String AES = "AES";
-
-  // --- WARNING: HARDCODED KEY FOR TESTING ONLY ---
-  // --- MUST BE REPLACED BY SECURE KEY MANAGEMENT (Task 5+) ---
-  private static final byte[] TEMP_HARDCODED_KEY_BYTES = new byte[32]; // Replace with actual random bytes for testing
-  static {
-    // Initialize with *some* value for testing, DO NOT use all zeros in real tests
-    new SecureRandom().nextBytes(TEMP_HARDCODED_KEY_BYTES);
-    // Or use a fixed known key for specific test cases, e.g.:
-    // TEMP_HARDCODED_KEY_BYTES = javax.xml.bind.DatatypeConverter.parseHexBinary("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
-  }
-  private static final SecretKey AES_KEY = new SecretKeySpec(TEMP_HARDCODED_KEY_BYTES, AES);
-  // --- END WARNING ---
 
   private final SecureRandom secureRandom = new SecureRandom();
+  private final SealManager sealManager;
+
+  public EncryptionService(SealManager sealManager) {
+    this.sealManager = sealManager;
+    log.info("EncryptionService initialized.");
+  }
 
   // ... encryption/decryption methods will go here ...
   /**
@@ -56,10 +53,13 @@ public class EncryptionService {
    */
   public byte[] encrypt(byte[] plaintext) {
     if (plaintext == null) {
-      // Or throw IllegalArgumentException
       throw new EncryptionException("Plaintext cannot be null.");
     }
     log.debug("Attempting to encrypt {} bytes of data.", plaintext.length);
+
+    // --- Get Master Key (Checks Seals Status) ---
+    SecretKey currentMasterKey = sealManager.getMasterKey();
+    // --
 
     // 1. Generate unique nonce (IV)
     byte[] nonce = new byte[NONCE_LENGTH_BYTE];
@@ -73,9 +73,9 @@ public class EncryptionService {
       // 3. Get Cipher instance
       // Using default provider resolution, BC should be picked up if needed
       Cipher cipher = Cipher.getInstance(ALGORITHM);
-
       // 4. Initialize Cipher for encryption
-      cipher.init(Cipher.ENCRYPT_MODE, AES_KEY, gcmParameterSpec);
+      // --- Use Dynamic Key ---
+      cipher.init(Cipher.ENCRYPT_MODE, currentMasterKey, gcmParameterSpec); // <-- ENCRYPT_MODE
       log.trace("Cipher initialized for encryption (AES/GCM/NoPadding).");
 
       // 5. Perform encryption
@@ -119,10 +119,13 @@ public class EncryptionService {
     }
     log.debug("Attempting to decrypt {} bytes of combined nonce and ciphertext.", nonceAndCiphertext.length);
 
-    // Use ByteBuffer for easier extraction
-    ByteBuffer bb = ByteBuffer.wrap(nonceAndCiphertext);
+    // --- Get Master Key (Checks Seal Status) ---
+    SecretKey currentMasterKey = sealManager.getMasterKey();
+    // --
 
+    // Use ByteBuffer for easier extraction
     // 2. Extract nonce
+    ByteBuffer bb = ByteBuffer.wrap(nonceAndCiphertext);
     byte[] nonce = new byte[NONCE_LENGTH_BYTE];
     bb.get(nonce);
     log.trace("Extracted nonce ({} bytes).", nonce.length);
@@ -138,9 +141,8 @@ public class EncryptionService {
     try {
       // 5. Get Cipher instance
       Cipher cipher = Cipher.getInstance(ALGORITHM);
-
-      // 6. Initialize Cipher for decryption
-      cipher.init(Cipher.DECRYPT_MODE, AES_KEY, gcmParameterSpec); // <-- DECRYPT_MODE
+      // --- Use Dynamic Key ---
+      cipher.init(Cipher.DECRYPT_MODE, currentMasterKey, gcmParameterSpec);
       log.trace("Cipher initialized for decryption (AES/GCM/NoPadding).");
 
       // 7. Perform decryption (includes authentication tag verification)
