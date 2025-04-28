@@ -27,6 +27,7 @@ To provide a secure, centralized system for managing dynamic database credential
   - **Implemented:** Basic HTTP server setup using Spring Boot Web (embedded Tomcat). Listens on configured port (e.g., 8081).
   - **Implemented:** `RootController` created in `tech.yump.vault.api`.
   - **Implemented:** Basic `GET /` endpoint available, returning a simple JSON status message.
+  - **Implemented:** `GET /sys/seal-status` endpoint available, returning the current seal status (`{"sealed": true/false}`).
 - **Authentication/Authorization:** *Not Implemented*
 - **Secrets Engines:** *Not Implemented*
 
@@ -48,8 +49,12 @@ To provide a secure, centralized system for managing dynamic database credential
 2. Set the environment variable: `export MSSM_MASTER_KEY_B64="YOUR_GENERATED_BASE64_KEY_HERE"`
 3. Run the application (e.g., via `mvn spring-boot:run` or from your IDE). The application should log that it has successfully unsealed and the server has started.
 4. Access the root endpoint (assuming port 8081): `curl http://localhost:8081/`
+5. Check the seal status: `curl http://localhost:8081/sys/seal-status` (Should return `{"sealed":false}`)
 
-*(If the variable is not set or invalid, the application will start but remain sealed).*
+**Running (Sealed):**
+1. Ensure the `MSSM_MASTER_KEY_B64` environment variable is **not** set or is invalid.
+2. Run the application. It should log that it remains sealed.
+3. Check the seal status: `curl http://localhost:8081/sys/seal-status` (Should return `{"sealed":true}`)
 
 ## Project Roadmap (Atomic Tasks - Phase 1)
 
@@ -61,7 +66,7 @@ Based on `project/mssm-atomic-tasks-v1-0.md`:
 - [x] **Task 4:** Implement Basic File System Storage Backend
 - [x] **Task 5:** Implement Core Seal/Unseal Logic
 - [x] **Task 6:** Set Up Minimal HTTP Server & Routing
-- [ ] **Task 7:** Create `/sys/seal-status` API Endpoint
+- [x] **Task 7:** Create `/sys/seal-status` API Endpoint
 - [ ] **Task 8:** Configure Basic TLS for API Server
 - [ ] **Task 9:** Implement Basic Configuration Loading
 - [ ] **Task 10:** Write Unit Tests for Encryption & Storage

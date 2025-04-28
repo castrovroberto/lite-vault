@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Seal Status API Endpoint (Task 7):**
+  - Implemented `GET /sys/seal-status` endpoint in `RootController`.
+  - Injects `SealManager` to query the current seal state.
+  - Returns a JSON response indicating the seal status: `{"sealed": true}` or `{"sealed": false}`.
 - **Minimal HTTP Server & Routing (Task 6):**
   - Integrated `spring-boot-starter-web` to enable embedded Tomcat server.
   - Created `api` package (`tech.yump.vault.api`) for REST controllers.
@@ -58,6 +62,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Now depends on `SealManager` via constructor injection.
   - Retrieves the master key dynamically using `sealManager.getMasterKey()` before performing encryption or decryption.
   - Propagates `VaultSealedException` if cryptographic operations are attempted while the vault is sealed.
+- **Root Controller:**
+  - Injected `SealManager` via constructor.
 
 ### Security
 - **Master Key Management:** The master encryption key is no longer hardcoded in `EncryptionService`. It is now managed by `SealManager` and loaded into memory only when the vault is unsealed.
