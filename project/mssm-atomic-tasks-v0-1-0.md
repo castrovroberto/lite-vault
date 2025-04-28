@@ -1,4 +1,4 @@
-# Minimal Secure Secrets Manager (MSSM) v1.0
+# Minimal Secure Secrets Manager (MSSM) v0.1.0
 
 ## Atomic Tasks Roadmap: Phase 1 - Core System Setup
 
@@ -8,7 +8,7 @@
 
 ### First 10 Atomic Tasks
 
-#### 1. [ ] Initialize Project & Basic Structure
+#### 1. [x] Initialize Project & Basic Structure
 - **Description:**
     - Set up the project repository (Git).
     - Choose primary language/framework (e.g., Go, Java/Spring Boot, Python/FastAPI).
@@ -20,7 +20,7 @@
 - **Rationale:**
     - Establishes the development environment and enforces code organization discipline early.
 
-#### 2. [ ] Implement Core Encryption/Decryption Logic (AES-GCM)
+#### 2. [x] Implement Core Encryption/Decryption Logic (AES-GCM)
 - **Description:**
     - Implement functions/methods to encrypt and decrypt byte arrays using AES-GCM.
     - Generate nonces correctly and ensure nonce reuse protection.
@@ -29,7 +29,7 @@
     - AES-GCM provides authenticated encryption.
     - Core primitive required for F-CORE-100 (data encryption at rest).
 
-#### 3. [ ] Define Encrypted Storage Format
+#### 3. [x] Define Encrypted Storage Format
 - **Description:**
     - Create a simple storage format, preferably JSON or binary:
         - Nonce
@@ -38,7 +38,7 @@
 - **Rationale:**
     - Defines how encrypted data blobs are structured for persistence.
 
-#### 4. [ ] Implement Basic File System Storage Backend
+#### 4. [x] Implement Basic File System Storage Backend
 - **Description:**
     - Define a `StorageBackend` interface.
     - Implement a file system-based backend:
@@ -49,7 +49,7 @@
     - Initial persistence layer for secrets.
     - Foundation for modular storage extensibility.
 
-#### 5. [ ] Implement Core Seal/Unseal Logic
+#### 5. [x] Implement Core Seal/Unseal Logic
 - **Description:**
     - Implement a "sealed" state where the master key is not loaded.
     - Implement an "unseal" process:
@@ -58,28 +58,28 @@
 - **Rationale:**
     - Critical for protecting secrets if the system restarts or is compromised.
 
-#### 6. [ ] Set Up Minimal HTTP Server & Routing
+#### 6. [x] Set Up Minimal HTTP Server & Routing
 - **Description:**
     - Initialize a basic HTTP server with request routing.
     - No authentication initially.
 - **Rationale:**
     - Core foundation for the API (F-CORE-150).
 
-#### 7. [ ] Create `/sys/seal-status` API Endpoint
+#### 7. [x] Create `/sys/seal-status` API Endpoint
 - **Description:**
     - Implement a GET endpoint that returns the current seal status.
     - Response Example: `{ "sealed": true }`
 - **Rationale:**
     - Enables minimal API interaction and monitoring.
 
-#### 8. [ ] Configure Basic TLS for API Server
+#### 8. [x] Configure Basic TLS for API Server
 - **Description:**
     - Generate a self-signed certificate for local development.
     - Configure server to serve only via HTTPS.
 - **Rationale:**
     - Meet security requirements for encrypted transport (NFR-SEC-110).
 
-#### 9. [ ] Implement Basic Configuration Loading
+#### 9. [x] Implement Basic Configuration Loading
 - **Description:**
     - Allow the system to load basic settings:
         - Storage path
@@ -89,7 +89,7 @@
 - **Rationale:**
     - Prepares the system for flexible deployment environments.
 
-#### 10. [ ] Write Unit Tests for Encryption & Storage
+#### 10. [x] Write Unit Tests for Encryption & Storage
 - **Description:**
     - Implement unit tests for:
         - AES-GCM encrypt/decrypt correctness.
@@ -127,4 +127,3 @@
 > **Reminder:** Security, modularity, and testability are the top priorities from the start.
 
 ---
-
