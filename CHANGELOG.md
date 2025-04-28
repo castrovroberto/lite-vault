@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Minimal HTTP Server & Routing (Task 6):**
+  - Integrated `spring-boot-starter-web` to enable embedded Tomcat server.
+  - Created `api` package (`tech.yump.vault.api`) for REST controllers.
+  - Implemented `RootController` (`@RestController`) with a basic `GET /` endpoint.
+  - The root endpoint returns a simple JSON status message (`{"message": "...", "status": "OK"}`).
+  - Configured server port via `application.yml` (e.g., `server.port=8081`).
 - **Core Seal/Unseal Mechanism (Task 5):**
   - Introduced `SealStatus` enum (`SEALED`, `UNSEALED`) in `tech.yump.vault.core`.
   - Added `VaultSealedException` thrown when operations requiring the master key are attempted while sealed.
@@ -31,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Uses Base64 encoding for nonce and ciphertext within the JSON structure.
   - Added convenience methods in `EncryptedData` for Base64 encoding/decoding.
   - Leverages Jackson (via Spring Boot Web) for future JSON serialization/deserialization.
-    +- **Core Encryption Service (Task 2):** // Moved details here as it was part of initial setup description before
+- **Core Encryption Service (Task 2):**
   - Implemented `EncryptionService.java` providing core cryptographic operations.
   - Uses **AES-256-GCM** for authenticated encryption (AEAD), fulfilling NFR-SEC-100.
   - Generates a unique 12-byte nonce per encryption operation.
@@ -39,7 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added custom `EncryptionService.EncryptionException` for cryptographic errors.
   - Registered BouncyCastle security provider (`bcprov-jdk18on`) for JCE operations.
   - Added basic SLF4j logging to the service.
-    +- **Project Setup (Task 1):** // Moved details here as it was part of initial setup description before
+- **Project Setup (Task 1):**
   - Initialized project structure with Maven and Spring Boot parent.
   - Configured `pom.xml` with Java 21, Spring Boot dependencies (Web, Test), Lombok, and BouncyCastle.
   - Added standard `.gitignore` file.

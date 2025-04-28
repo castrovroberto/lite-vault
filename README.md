@@ -19,12 +19,14 @@ To provide a secure, centralized system for managing dynamic database credential
 - **Storage:**
   - **Defined:** JSON format (`EncryptedData.java`) for persistent storage (version, Base64 nonce/ciphertext, timestamp).
   - **Implemented:** Basic persistence layer via `FileSystemStorageBackend`, storing encrypted JSON blobs on local disk. Configurable path via properties.
-
 - **Sealing:**
   - **Implemented:** Core seal/unseal logic (`SealManager`). Vault starts `SEALED` by default.
   - **Implemented:** Automatic unseal attempt on startup using `mssm.master.key.b64` configuration property/environment variable.
   - **Implemented:** Cryptographic operations via `EncryptionService` are blocked with `VaultSealedException` when sealed.
-- **API:** *Not Implemented*
+- **API:**
+  - **Implemented:** Basic HTTP server setup using Spring Boot Web (embedded Tomcat). Listens on configured port (e.g., 8081).
+  - **Implemented:** `RootController` created in `tech.yump.vault.api`.
+  - **Implemented:** Basic `GET /` endpoint available, returning a simple JSON status message.
 - **Authentication/Authorization:** *Not Implemented*
 - **Secrets Engines:** *Not Implemented*
 
@@ -44,9 +46,10 @@ To provide a secure, centralized system for managing dynamic database credential
 **Running (with Auto-Unseal):**
 1. Generate a 32-byte AES key and Base64 encode it: `openssl rand 32 | base64`
 2. Set the environment variable: `export MSSM_MASTER_KEY_B64="YOUR_GENERATED_BASE64_KEY_HERE"`
-3. Run the application (e.g., via `mvn spring-boot:run` or from your IDE). The application should log that it has successfully unsealed.
+3. Run the application (e.g., via `mvn spring-boot:run` or from your IDE). The application should log that it has successfully unsealed and the server has started.
+4. Access the root endpoint (assuming port 8081): `curl http://localhost:8081/`
 
-+*(If the variable is not set or invalid, the application will start but remain sealed).*
+*(If the variable is not set or invalid, the application will start but remain sealed).*
 
 ## Project Roadmap (Atomic Tasks - Phase 1)
 
@@ -57,7 +60,7 @@ Based on `project/mssm-atomic-tasks-v1-0.md`:
 - [x] **Task 3:** Define Encrypted Storage Format
 - [x] **Task 4:** Implement Basic File System Storage Backend
 - [x] **Task 5:** Implement Core Seal/Unseal Logic
-- [ ] **Task 6:** Set Up Minimal HTTP Server & Routing
+- [x] **Task 6:** Set Up Minimal HTTP Server & Routing
 - [ ] **Task 7:** Create `/sys/seal-status` API Endpoint
 - [ ] **Task 8:** Configure Basic TLS for API Server
 - [ ] **Task 9:** Implement Basic Configuration Loading
