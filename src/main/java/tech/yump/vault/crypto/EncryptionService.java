@@ -1,11 +1,10 @@
 package tech.yump.vault.crypto;
 
-import java.nio.ByteBuffer;
-import java.security.InvalidAlgorithmParameterException;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
-import java.security.Security;
+import lombok.extern.slf4j.Slf4j;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.springframework.stereotype.Service;
+import tech.yump.vault.core.SealManager;
+
 import javax.crypto.AEADBadTagException;
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
@@ -13,11 +12,12 @@ import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
-import lombok.extern.slf4j.Slf4j;
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.springframework.stereotype.Service;
-import tech.yump.vault.core.SealManager;
+import java.nio.ByteBuffer;
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.security.Security;
 
 @Slf4j
 @Service
@@ -32,7 +32,8 @@ public class EncryptionService {
 
   private static final String ALGORITHM = "AES/GCM/NoPadding";
   private static final int TAG_LENGTH_BIT = 128; // Standard for GCM
-  static final int NONCE_LENGTH_BYTE = 12; // Recommended for GCM
+
+  public static final int NONCE_LENGTH_BYTE = 12; // Recommended for GCM
 
   private final SecureRandom secureRandom = new SecureRandom();
   private final SealManager sealManager;

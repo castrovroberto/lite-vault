@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Static Secrets Engine (KV v1 - Task 12):**
+  - Defined `KVSecretEngine` interface (`read`, `write`, `delete`) in `tech.yump.vault.secrets.kv`.
+  - Implemented `FileSystemKVSecretEngine` using `StorageBackend`, `EncryptionService`, and `ObjectMapper`.
+  - Serializes `Map<String, String>` secrets to JSON, encrypts the JSON blob, and stores the resulting `EncryptedData` via `StorageBackend` using the logical path as the key.
+  - Decrypts the blob and deserializes JSON back to a map on read.
+  - Added `KVEngineException` for engine-specific errors.
+  - Registered `FileSystemKVSecretEngine` as a Spring `@Service`.
 - **Basic Static Token Authentication (Task 11):**
   - Added `spring-boot-starter-security` dependency.
   - Updated `MssmProperties` to include `mssm.auth.static-tokens` configuration (nested records `AuthProperties`, `StaticTokenAuthProperties` with `enabled` flag, `Set<String> tokens`).
@@ -108,6 +115,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Injected `SealManager` via constructor.
 
 ### Fixed
+- **KV Secret Engine:** Corrected the interaction between `FileSystemKVSecretEngine` and `EncryptionService`/`EncryptedData`.
+  - `write`: Now correctly splits the `nonce || ciphertext` byte array returned by `EncryptionService.encrypt` into separate `nonce` and `ciphertext` byte arrays before constructing the `EncryptedData` object for storage via `StorageBackend`.
+  - `read`: Now correctly retrieves separate `nonce` and `ciphertext` byte arrays from the `EncryptedData` object (via `getNonceBytes`/`getCiphertextBytes`), combines them into the `nonce || ciphertext` format expected by `EncryptionService.decrypt`, and passes the combined array for decryption.
 - **Configuration:** Corrected nested record type references (`MssmProperties.AuthProperties.StaticTokenAuthProperties`) in `StaticTokenAuthFilter` and `SecurityConfig`.
 - **Testing:** Updated `FileSystemStorageBackendTest` to correctly instantiate `MssmProperties` with the new required `AuthProperties` argument.
 - **JSON Serialization:** Added `@JsonIgnore` to `getNonceBytes()` and `getCiphertextBytes()` methods in `EncryptedData` to prevent them from being incorrectly included in the JSON output by Jackson during storage, resolving `UnrecognizedPropertyException` during deserialization.
