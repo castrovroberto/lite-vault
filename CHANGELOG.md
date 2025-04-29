@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **KV v1 API Endpoints (Task 13):**
+  - Created `KVController` under `/v1/kv/data`.
+  - Implemented `PUT /{*path}` endpoint to write/update secrets (JSON body).
+  - Implemented `GET /{*path}` endpoint to read secrets (returns JSON map or 404).
+  - Implemented `DELETE /{*path}` endpoint to delete secrets.
+  - Endpoints require authentication via `X-Vault-Token` (Task 11).
+  - Added basic exception handling (`@ExceptionHandler`) mapping engine errors to HTTP status codes (400, 404, 500, 503).
 - **Static Secrets Engine (KV v1 - Task 12):**
   - Defined `KVSecretEngine` interface (`read`, `write`, `delete`) in `tech.yump.vault.secrets.kv`.
   - Implemented `FileSystemKVSecretEngine` using `StorageBackend`, `EncryptionService`, and `ObjectMapper`.
@@ -24,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Configured stateless session management (`SessionCreationPolicy.STATELESS`).
     - Disabled CSRF, form login, logout.
     - Added `StaticTokenAuthFilter` bean and included it in the filter chain.
-    - Configured authorization rules: `/sys/seal-status` and `/` are public (`permitAll`), all other requests require authentication (`authenticated`).
+    - Configured authorization rules: `/sys/seal-status` and `/` are public (`permitAll`), all other requests (including `/v1/**`) require authentication (`authenticated`).
     - Added conditional logic to apply security only if `mssm.auth.static-tokens.enabled=true`.
   - Added example static token configuration to `application-dev.yml`.
 - **Unit Tests (Task 10):**
@@ -40,7 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Tested handling of null/empty inputs.
 - **Type-Safe Configuration Loading (Task 9):**
   - Introduced `@ConfigurationProperties` class (`MssmProperties`) for structured access to `mssm.*` settings.
-  - Used nested records (`MasterKeyProperties`, `StorageProperties`, `FileSystemProperties`) for organization.
+  - Used nested records (`MasterKeyProperties`, `StorageProperties`, `FileSystemProperties`, `AuthProperties`, `StaticTokenAuthProperties`) for organization.
   - Added `spring-boot-starter-validation` dependency.
   - Implemented startup validation (`@Validated`, `@NotBlank`) for required properties (`mssm.master.b64`, `mssm.storage.filesystem.path`).
   - Enabled the properties class via `@EnableConfigurationProperties` in `LiteVaultApplication`.
@@ -102,7 +109,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added placeholder `LiteVaultApplication` and `LiteVaultApplicationTest`.
 
 ### Changed
-- **API Access:** Most API endpoints now require authentication via the `X-Vault-Token` header when static token auth is enabled. `/` and `/sys/seal-status` remain public.
+- **API Access:** Most API endpoints (including `/v1/**`) now require authentication via the `X-Vault-Token` header when static token auth is enabled. `/` and `/sys/seal-status` remain public.
 - **Configuration Usage:** Refactored `SealManager` and `FileSystemStorageBackend` to inject and use type-safe `MssmProperties` instead of `@Value` or direct property reading.
 - **Configuration Structure:** Adjusted `application-dev.yml` to match the structure expected by `MssmProperties` (e.g., `mssm.master.b64` instead of `mssm.master.key.b64`).
 - **API Server:** Now runs on HTTPS using the configured port (`8443` in `application-dev.yml`). HTTP is disabled by default when SSL is enabled this way.
@@ -115,6 +122,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Injected `SealManager` via constructor.
 
 ### Fixed
+- **Security Config:** Removed an outdated comment regarding null checks and accessor usage in `SecurityConfig.java`.
 - **KV Secret Engine:** Corrected the interaction between `FileSystemKVSecretEngine` and `EncryptionService`/`EncryptedData`.
   - `write`: Now correctly splits the `nonce || ciphertext` byte array returned by `EncryptionService.encrypt` into separate `nonce` and `ciphertext` byte arrays before constructing the `EncryptedData` object for storage via `StorageBackend`.
   - `read`: Now correctly retrieves separate `nonce` and `ciphertext` byte arrays from the `EncryptedData` object (via `getNonceBytes`/`getCiphertextBytes`), combines them into the `nonce || ciphertext` format expected by `EncryptionService.decrypt`, and passes the combined array for decryption.
@@ -123,7 +131,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **JSON Serialization:** Added `@JsonIgnore` to `getNonceBytes()` and `getCiphertextBytes()` methods in `EncryptedData` to prevent them from being incorrectly included in the JSON output by Jackson during storage, resolving `UnrecognizedPropertyException` during deserialization.
 
 ### Security
-- **API Authentication (F-CORE-110):** Implemented basic static token authentication. Requests to protected endpoints without a valid `X-Vault-Token` will be rejected (typically with HTTP 401/403). Static tokens configured in `mssm.auth.static-tokens.tokens` must be kept secret.
+- **API Authentication (F-CORE-110):** Implemented basic static token authentication. Requests to protected endpoints (including `/v1/**`) without a valid `X-Vault-Token` will be rejected (typically with HTTP 401/403). Static tokens configured in `mssm.auth.static-tokens.tokens` must be kept secret.
 - **Configuration Validation:** Added startup validation for required configuration properties. The application now fails fast if `mssm.master.b64` or `mssm.storage.filesystem.path` are missing or invalid. Also added conditional validation for static tokens.
 - **Encryption in Transit:** API communication is now encrypted using TLS 1.2/1.3 (NFR-SEC-110). **Note:** Uses a self-signed certificate suitable only for development/testing.
 - **Keystore Password:** The keystore password must be provided via the `MSSM_KEYSTORE_PASSWORD` environment variable at runtime.

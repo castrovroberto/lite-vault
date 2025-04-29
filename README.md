@@ -30,6 +30,10 @@ To provide a secure, centralized system for managing dynamic database credential
   - **Implemented:** `RootController` created in `tech.yump.vault.api`.
   - **Implemented:** Basic `GET /` endpoint available, returning a simple JSON status message.
   - **Implemented:** `GET /sys/seal-status` endpoint available, returning the current seal status (`{"sealed": true/false}`).
+  - **Implemented (KV v1):** CRUD endpoints for the static Key/Value secrets engine under `/v1/kv/data/{path}` (Task 13):
+    - `PUT /v1/kv/data/{path}`: Write/update secrets (JSON body `{ "key": "value", ... }`). Requires authentication.
+    - `GET /v1/kv/data/{path}`: Read secrets (returns JSON map or 404). Requires authentication.
+    - `DELETE /v1/kv/data/{path}`: Delete secrets. Requires authentication.
 - **Authentication/Authorization:**
   - **Implemented (Basic):** Static Token Authentication (Task 11). API requests (except `/` and `/sys/seal-status`) require a valid `X-Vault-Token` header matching a token configured in `mssm.auth.static-tokens.tokens` when enabled. Uses Spring Security for enforcement. (F-CORE-110)
 - **Secrets Engines:**
@@ -48,7 +52,7 @@ To provide a secure, centralized system for managing dynamic database credential
 - **Sealing:** The master encryption key will not be persisted directly. An unseal mechanism will be required to load the key into memory (F-CORE-140).
   - **Implemented:** The core `SealManager` controls the loading/unloading of the master key into memory. The vault starts sealed and blocks crypto operations.
   - **Initial Unseal:** Currently relies on providing the master key via the `mssm.master.b64` configuration property (e.g., environment variable) for automatic unseal on startup. **Securing this initial key value is critical.**
-- **Authentication:** API access is now protected by static tokens when enabled (`mssm.auth.static-tokens.enabled=true`). Clients must provide a valid token in the `X-Vault-Token` header. These tokens should be treated as sensitive credentials.
+- **Authentication:** API access (including the new `/v1/kv/data/**` endpoints) is protected by static tokens when enabled (`mssm.auth.static-tokens.enabled=true`). Clients must provide a valid token in the `X-Vault-Token` header. These tokens should be treated as sensitive credentials.
 - **Configuration Validation:** The application now performs basic validation on required configuration properties at startup (e.g., master key, storage path) and will fail to start if they are missing or invalid. Also includes conditional validation for static tokens (tokens required only if enabled).
 
 ## Getting Started
@@ -59,7 +63,7 @@ To provide a secure, centralized system for managing dynamic database credential
 1.  **Generate Keystore (if not present):** Run the `generate-keystore.sh` script (or `key-gen.sh` if not renamed) from the project root (or use the `keytool` command directly) to create `src/main/resources/litevault-keystore.p12` (or `dev-keystore.p12` if using the parameterized script defaults).
 2.  **Set Keystore Password:** Set the environment variable `MSSM_KEYSTORE_PASSWORD` to match the password used when generating the keystore.
 3.  **Set Master Key:** Securely generate a Base64 encoded AES-256 key and set the environment variable `MSSM_MASTER_B64`. Example (Linux/macOS): `export MSSM_MASTER_B64=$(openssl rand -base64 32)`
-4.  **Configure Static Token (Optional):** If `mssm.auth.static-tokens.enabled=true` in `application.yml` or `application-dev.yml`, set the token(s) via environment variable or configuration. Example: `export MSSM_AUTH_STATIC__TOKENS_TOKENS=my-secret-token`
+4.  **Configure Static Token (Optional but needed for KV API):** If `mssm.auth.static-tokens.enabled=true` in `application.yml` or `application-dev.yml`, set the token(s) via environment variable or configuration. Example: `export MSSM_AUTH_STATIC__TOKENS_TOKENS=my-secret-token`. You will need this token in the `X-Vault-Token` header to use the KV endpoints.
 5.  **Build & Run:** Use Maven: `mvn spring-boot:run` (or build a JAR `mvn package` and run `java -jar target/*.jar`).
 
 *(Add more detailed instructions as needed)*
