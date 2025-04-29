@@ -2,13 +2,14 @@ package tech.yump.vault.config;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-// import jakarta.validation.constraints.NotEmpty; // REMOVE this import
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
-import java.util.Collections;
-import java.util.Set;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
-import tech.yump.vault.config.validation.ValidStaticTokenConfig; // IMPORT the custom annotation
+import tech.yump.vault.auth.policy.PolicyDefinition;
+
+import java.util.Collections;
+import java.util.List;
 
 /**
  * Configuration properties for the MSSM application under the 'mssm' prefix.
@@ -17,70 +18,74 @@ import tech.yump.vault.config.validation.ValidStaticTokenConfig; // IMPORT the c
 @Validated
 public record MssmProperties(
 
-    @Valid
-    @NotNull
-    MasterKeyProperties master,
+        @Valid
+        @NotNull
+        MasterKeyProperties master,
 
-    @Valid
-    @NotNull
-    StorageProperties storage,
+        @Valid
+        @NotNull
+        StorageProperties storage,
 
-    @Valid
-    @NotNull
-    AuthProperties auth
+        @Valid
+        @NotNull
+        AuthProperties auth,
+
+        @Valid
+        List<PolicyDefinition> policies
 ) {
-
-  // --- MasterKeyProperties and StorageProperties remain the same ---
-
-  @Validated
-  public record MasterKeyProperties(
-      @NotBlank(message = "Master key (mssm.master.b64) must be provided.")
-      String b64
-  ) {}
-
-  @Validated
-  public record StorageProperties(
-      @Valid
-      @NotNull
-      FileSystemProperties filesystem
-  ) {
     @Validated
-    public record FileSystemProperties(
-        @NotBlank(message = "Filesystem storage path (mssm.storage.filesystem.path) must be provided.")
-        String path
+    public record MasterKeyProperties(
+            @NotBlank(message = "Master key (mssm.master.b64) must be provided.")
+            String b64
     ) {}
-  }
 
-  // --- AuthProperties remains the same ---
-  @Validated
-  public record AuthProperties (
-      @Valid
-      @NotNull
-      StaticTokenAuthProperties staticTokens
-  ) {
-
-    /**
-     * Properties specific to static token authentication.
-     * Applies conditional validation: tokens are required only if enabled=true.
-     */
     @Validated
-    @ValidStaticTokenConfig // APPLY the custom class-level validation annotation
-    public record StaticTokenAuthProperties (
-        boolean enabled, // Defaults to false if omitted
-
-        // REMOVE @NotEmpty from the field level
-        // ADD @NotNull to ensure the binder provides an empty set if the key exists but is empty, preventing NPEs.
-        // The actual "not empty if enabled" check is handled by @ValidStaticTokenConfig.
-        @NotNull(message = "Token set (mssm.auth.static-tokens.tokens) must be present, even if empty when disabled.")
-        Set<String> tokens
+    public record StorageProperties(
+            @Valid
+            @NotNull
+            FileSystemProperties filesystem
     ) {
-      // Ensure tokens defaults to an empty set if omitted in YAML
-      // (The binder often does this, but explicit initialization adds safety)
-      public StaticTokenAuthProperties {
-        if (tokens == null) {
-          tokens = Collections.emptySet();
-        }
-      }
+        @Validated
+        public record FileSystemProperties(
+                @NotBlank(message = "Filesystem storage path (mssm.storage.filesystem.path) must be provided.")
+                String path
+        ) {}
     }
-  }
+
+    @Validated
+    public record AuthProperties (
+            @Valid
+            @NotNull
+            StaticTokenAuthProperties staticTokens
+    ) {
+
+        @Validated
+        public record StaticTokenPolicyMapping(
+                @NotBlank(message = "Static token value cannot be blank")
+                String token,
+
+                @NotEmpty(message = "Token must be associated with at least one policy name")
+                List<String> policyNames // List of policy names (strings) assigned to this token
+        ) {}
+
+
+        /**
+         * Properties specific to static token authentication.
+         * Validation ensures mappings are present if enabled.
+         */
+        @Validated
+        public record StaticTokenAuthProperties (
+                boolean enabled,
+
+                @NotEmpty(message = "Static token mappings (mssm.auth.static-tokens.mappings) cannot be empty when static token auth is enabled.")
+                @Valid
+                List<StaticTokenPolicyMapping> mappings
+        ) {
+            public StaticTokenAuthProperties {
+                if (mappings == null) {
+                    mappings = Collections.emptyList();
+                }
+            }
+        }
+    }
 }

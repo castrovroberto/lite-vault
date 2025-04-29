@@ -35,12 +35,18 @@ To provide a secure, centralized system for managing dynamic database credential
     - `GET /v1/kv/data/{path}`: Read secrets (returns JSON map or 404). Requires authentication.
     - `DELETE /v1/kv/data/{path}`: Delete secrets. Requires authentication.
 - **Authentication/Authorization:**
-  - **Implemented (Basic):** Static Token Authentication (Task 11). API requests (except `/` and `/sys/seal-status`) require a valid `X-Vault-Token` header matching a token configured in `mssm.auth.static-tokens.tokens` when enabled. Uses Spring Security for enforcement. (F-CORE-110)
+  - **Implemented (Basic Auth):** Static Token Authentication (Task 11). API requests (except `/` and `/sys/seal-status`) require a valid `X-Vault-Token` header.
+  - **Defined (Policy Structure - Task 14):**
+    - Data structures for policies (`PolicyDefinition`, `PolicyRule`, `PolicyCapability`) are defined.
+    - Static tokens are now linked to one or more named policies via configuration (`mssm.auth.static-tokens.mappings` and `mssm.policies`).
+    - The authentication filter (`StaticTokenAuthFilter`) now identifies the policies associated with a valid token and stores them (as authorities like `POLICY_kv-reader`) in the security context, preparing for ACL enforcement (Task 15).
+    - **Note:** Actual ACL *enforcement* based on these policies is not yet implemented (Task 15).
 - **Secrets Engines:**
   - **Implemented (KV v1):** A static Key/Value secrets engine (`FileSystemKVSecretEngine`) is implemented. It stores arbitrary key-value pairs at logical paths, encrypting the entire map as a single blob before persisting it using the configured `StorageBackend`. (Task 12)
 - **Configuration:**
   - **Implemented:** Type-safe configuration loading using `@ConfigurationProperties` (`MssmProperties`) with startup validation for required `mssm.*` settings.
-  - **Implemented:** Configuration for static authentication tokens (`mssm.auth.static-tokens`) with conditional validation (tokens required only if enabled).
+  - **Implemented:** Configuration for static authentication tokens (`mssm.auth.static-tokens`) now uses a `mappings` list to link tokens to policy names (`StaticTokenPolicyMapping`). Conditional validation ensures mappings exist if auth is enabled. (Task 14)
+  - **Implemented:** Configuration section `mssm.policies` for defining named policies and their rules (`PolicyDefinition`, `PolicyRule`). (Task 14)
 - **Testing:**
   - **Implemented:** Unit tests for `EncryptionService` and `FileSystemStorageBackend` covering core functionality, edge cases, and error handling.
 
@@ -52,8 +58,9 @@ To provide a secure, centralized system for managing dynamic database credential
 - **Sealing:** The master encryption key will not be persisted directly. An unseal mechanism will be required to load the key into memory (F-CORE-140).
   - **Implemented:** The core `SealManager` controls the loading/unloading of the master key into memory. The vault starts sealed and blocks crypto operations.
   - **Initial Unseal:** Currently relies on providing the master key via the `mssm.master.b64` configuration property (e.g., environment variable) for automatic unseal on startup. **Securing this initial key value is critical.**
-- **Authentication:** API access (including the new `/v1/kv/data/**` endpoints) is protected by static tokens when enabled (`mssm.auth.static-tokens.enabled=true`). Clients must provide a valid token in the `X-Vault-Token` header. These tokens should be treated as sensitive credentials.
-- **Configuration Validation:** The application now performs basic validation on required configuration properties at startup (e.g., master key, storage path) and will fail to start if they are missing or invalid. Also includes conditional validation for static tokens (tokens required only if enabled).
+- **Authentication:** API access (including the `/v1/kv/data/**` endpoints) is protected by static tokens when enabled (`mssm.auth.static-tokens.enabled=true`). Clients must provide a valid token in the `X-Vault-Token` header. These tokens are now linked to named policies defined in the configuration (`mssm.policies` and `mssm.auth.static-tokens.mappings`). (Task 11, Task 14)
+- **Authorization:** **Defined (Not Enforced):** The structure for defining policies (paths + capabilities) and linking them to tokens is in place (Task 14). However, the actual enforcement of these policies (checking if a token's policies grant access to a specific path/action) is **not yet implemented** (Task 15). Currently, any valid token grants access to all protected endpoints.
+- **Configuration Validation:** The application performs validation on required configuration properties at startup (e.g., master key, storage path, token mappings if enabled) and will fail to start if they are missing or invalid.
 
 ## Getting Started
 
@@ -63,7 +70,8 @@ To provide a secure, centralized system for managing dynamic database credential
 1.  **Generate Keystore (if not present):** Run the `generate-keystore.sh` script (or `key-gen.sh` if not renamed) from the project root (or use the `keytool` command directly) to create `src/main/resources/litevault-keystore.p12` (or `dev-keystore.p12` if using the parameterized script defaults).
 2.  **Set Keystore Password:** Set the environment variable `MSSM_KEYSTORE_PASSWORD` to match the password used when generating the keystore.
 3.  **Set Master Key:** Securely generate a Base64 encoded AES-256 key and set the environment variable `MSSM_MASTER_B64`. Example (Linux/macOS): `export MSSM_MASTER_B64=$(openssl rand -base64 32)`
-4.  **Configure Static Token (Optional but needed for KV API):** If `mssm.auth.static-tokens.enabled=true` in `application.yml` or `application-dev.yml`, set the token(s) via environment variable or configuration. Example: `export MSSM_AUTH_STATIC__TOKENS_TOKENS=my-secret-token`. You will need this token in the `X-Vault-Token` header to use the KV endpoints.
-5.  **Build & Run:** Use Maven: `mvn spring-boot:run` (or build a JAR `mvn package` and run `java -jar target/*.jar`).
-
-*(Add more detailed instructions as needed)*
+4.  **Configure Policies and Static Tokens (Needed for KV API):**
+  *   Ensure `mssm.auth.static-tokens.enabled=true` in `application.yml` or `application-dev.yml`.
+  *   Define desired access policies under the `mssm.policies:` section in your configuration file.
+  *   Define token-to-policy mappings under `mssm.auth.static-tokens.mappings:`. Example:
+        
