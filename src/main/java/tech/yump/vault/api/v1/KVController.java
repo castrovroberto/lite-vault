@@ -33,9 +33,10 @@ public class KVController {
             @PathVariable String path,
             @RequestBody Map<String, String> secrets
     ) {
-        log.info("Received request to write secrets at path: {}", path);
-        kvSecretEngine.write(path, secrets);
-        log.info("Successfully wrote secrets to path: {}", path);
+        String sanitizedPath = sanitizePath(path);
+        log.info("Received request to write secrets at raw path: {}, sanitized path: {}", path, sanitizedPath);
+        kvSecretEngine.write(sanitizedPath, secrets);
+        log.info("Successfully wrote secrets to path: {}", sanitizedPath);
         return ResponseEntity.noContent().build();
     }
 
@@ -43,22 +44,24 @@ public class KVController {
     public ResponseEntity<Map<String, String>> readSecret(
             @PathVariable String path
     ) {
-        log.info("Received request to read secrets from path: {}", path);
-        Optional<Map<String, String>> secretsOptional = kvSecretEngine.read(path);
+        String sanitizedPath = sanitizePath(path);
+        log.info("Received request to read secrets from raw path: {}, sanitized path: {}", path, sanitizedPath);
+        Optional<Map<String, String>> secretsOptional = kvSecretEngine.read(sanitizedPath);
         if (secretsOptional.isPresent()) {
-            log.info("Secrets found for path: {}", path);
+            log.info("Secrets found for path: {}", sanitizedPath);
             return ResponseEntity.ok(secretsOptional.get());
         } else {
-            log.info("No secrets found for path: {}", path);
+            log.info("No secrets found for path: {}", sanitizedPath);
             return ResponseEntity.notFound().build();
         }
     }
 
     @DeleteMapping("/{*path}")
     public ResponseEntity<Void> deleteSecret(@PathVariable String path) {
-        log.info("Received request to delete secrets at path: {}", path);
-        kvSecretEngine.delete(path);
-        log.info("Successfully processed delete request for path: {}", path);
+        String sanitizedPath = sanitizePath(path);
+        log.info("Received request to delete secrets at raw path: {}, sanitized path: {}", path, sanitizedPath);
+        kvSecretEngine.delete(sanitizedPath);
+        log.info("Successfully processed delete request for path: {}", sanitizedPath);
         return ResponseEntity.noContent().build();
     }
 
@@ -93,6 +96,13 @@ public class KVController {
         log.error("An unexpected error occurred: {}", ex.getMessage(), ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(new ApiError("An unexpected internal error occurred."));
+    }
+
+    private String sanitizePath(String rawPath) {
+        if (rawPath != null && rawPath.startsWith("/")) {
+            return rawPath.substring(1);
+        }
+        return rawPath;
     }
 
 }

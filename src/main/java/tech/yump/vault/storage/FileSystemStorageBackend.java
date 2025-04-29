@@ -2,6 +2,11 @@ package tech.yump.vault.storage;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
+import tech.yump.vault.config.MssmProperties;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -12,11 +17,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.Optional;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
-import tech.yump.vault.config.MssmProperties;
 
 @Slf4j
 @Component // Register as a Spring component
@@ -33,7 +33,9 @@ public class FileSystemStorageBackend implements StorageBackend {
   ) {
     this.objectMapper = objectMapper;
     this.properties = properties;
-    this.basePath = Paths.get(properties.storage().filesystem().path()).toAbsolutePath();
+    this.basePath = Paths.get(properties.storage().filesystem().path())
+            .toAbsolutePath()
+            .normalize();
     log.info("FileSystemStorageBackend initialized with base path: {}", this.basePath);
   }
 

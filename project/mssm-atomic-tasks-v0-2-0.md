@@ -8,7 +8,7 @@
 
 ### Phase 2 Atomic Tasks (11-20)
 
-#### 11. [ ] Implement Basic Static Token Authentication
+#### 11. [x] Implement Basic Static Token Authentication
 - **Description:**
     - Define a simple static token authentication mechanism.
     - Load a list of valid, non-expiring tokens from configuration (`mssm.auth.static_tokens: ["token1", "token2"]`).
@@ -19,7 +19,7 @@
     - Secures the API beyond the basic TLS layer (F-CORE-110).
     - Provides a minimal way for clients (initially, test scripts or admins) to interact securely.
 
-#### 12. [ ] Implement Static Secrets Engine (KV v1 - Using StorageBackend)
+#### 12. [x] Implement Static Secrets Engine (KV v1 - Using StorageBackend)
 - **Description:**
     - Define a `KVSecretEngine` interface (or similar).
     - Implement the engine to store arbitrary key-value pairs at logical paths (e.g., `kv/data/myapp/config`).
@@ -31,7 +31,7 @@
     - Provides the first usable mechanism for storing and retrieving secrets (F-STATIC-400).
     - Leverages the existing encrypted storage layer.
 
-#### 13. [ ] Create API Endpoints for KV v1 (CRUD)
+#### 13. [x] Create API Endpoints for KV v1 (CRUD)
 - **Description:**
     - Implement a `KVController` (e.g., under `/v1/kv/data/{path...}`).
     - **Write:** `POST` or `PUT` endpoint accepting a JSON body `{ "key1": "value1", "key2": "value2" }` to store/update secrets at the specified path. Requires authentication.
