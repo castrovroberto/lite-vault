@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **PostgreSQL Engine Configuration (Task 23):**
+  - Updated `MssmProperties.java` to include nested configuration records (`SecretsProperties`, `DbSecretsProperties`, `PostgresProperties`, `PostgresRoleDefinition`) under `mssm.secrets.db.postgres`.
+  - Added configuration fields for target PostgreSQL connection URL, admin username, and admin password.
+  - Added configuration for defining roles as a map (`mssm.secrets.db.postgres.roles`), where each role specifies SQL `creationStatements`, `revocationStatements` (using `{{username}}`/`{{password}}` placeholders), and a `defaultTtl`.
+  - Included validation annotations (`@Valid`, `@NotBlank`, etc.) for the new configuration properties.
+  - Updated `application-dev.yml` with an example `mssm.secrets.db.postgres` section, including sample roles (`readonly-app-role`, `migrations-role`) and secure password handling via environment variable (`${MSSM_DB_POSTGRES_PASSWORD:...}`).
+  - Fulfills requirement F-DB-200.
 - **PostgreSQL Secrets Engine Core (Task 22):**
   - Created `PostgresSecretsEngine` class in `tech.yump.vault.secrets.db` package.
   - Implemented the `DynamicSecretsEngine` interface.

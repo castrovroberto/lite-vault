@@ -17,7 +17,7 @@
     - Establishes a common contract for all secrets engines (NFR-MTN-500).
     - Provides specific methods needed for dynamic secret generation and management.
 
-#### 22. [ ] Implement PostgreSQL Secrets Engine Core
+#### 22. [x] Implement PostgreSQL Secrets Engine Core
 - **Description:**
     - Create `PostgresSecretsEngine.java` implementing `DynamicSecretsEngine`.
     - Add necessary dependencies (e.g., PostgreSQL JDBC driver).
@@ -25,7 +25,7 @@
 - **Rationale:**
     - Creates the specific component responsible for PostgreSQL interactions.
 
-#### 23. [ ] Configure PostgreSQL Engine via Properties
+#### 23. [x] Configure PostgreSQL Engine via Properties
 - **Description:**
     - Update `MssmProperties` to include configuration for the PostgreSQL engine:
         - Connection URL (`mssm.db.postgres.connection_url`).
