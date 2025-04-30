@@ -7,24 +7,24 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication; // Added
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
-import tech.yump.vault.audit.AuditBackend; // Added
-import tech.yump.vault.audit.AuditEvent;   // Added
+import tech.yump.vault.audit.AuditBackend;
+import tech.yump.vault.audit.AuditEvent;
 import tech.yump.vault.config.MssmProperties;
 
 import java.io.IOException;
-import java.time.Instant; // Added
+import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;     // Added
+import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;    // Added
+import java.util.UUID;
 
 @Slf4j
 public class StaticTokenAuthFilter extends OncePerRequestFilter {

@@ -53,8 +53,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Implemented `StaticTokenAuthFilter` to read the `X-Vault-Token` header and validate tokens.
   - Implemented `SecurityConfig` using `@EnableWebSecurity` to integrate the filter and define basic authorization rules (public vs. authenticated).
   - Added example static token configuration to `application-dev.yml`.
-- **Unit Tests (Task 10):**
+- **Unit Tests (Task 10, Task 19):**
   - Implemented unit tests for `EncryptionService` and `FileSystemStorageBackend`.
+  - Implemented unit tests for `StaticTokenAuthFilter` and `PolicyEnforcementFilter`.
 - **Type-Safe Configuration Loading (Task 9):**
   - Introduced `@ConfigurationProperties` class (`MssmProperties`) for structured access to `mssm.*` settings.
   - Added `spring-boot-starter-validation` and implemented startup validation for required properties.
@@ -93,6 +94,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Testing:** Updated `lite-vault-cli.sh` to include tests specifically for policy enforcement scenarios using different tokens.
 
 ### Fixed
+- **Testing:** Fixed test failures in `PolicyEnforcementFilterTest` related to Mockito `UnnecessaryStubbingException` errors (by using `lenient()`) and an incorrect assertion comparing empty lists.
 - **Policy Path Matching:** Corrected the wildcard (`/*`) matching logic in `PolicyEnforcementFilter.pathMatches` to correctly handle paths like `kv/data/myapp/config` when the policy path is `kv/data/*`. (Fixes incorrect denials for root/wildcard policies).
 - **JSON Serialization (Instant):** Corrected `ObjectMapper` usage in `PolicyEnforcementFilter` by injecting the Spring-managed bean instead of creating a new one, ensuring the `JavaTimeModule` (for `java.time.Instant`) is registered and preventing `InvalidDefinitionException` when generating 403 error responses.
 - **Configuration Binding:** Corrected structure in `application-dev.yml` under `mssm.policies` to prevent `ConverterNotFoundException` during startup (removed incomplete entry, fixed rule structure).
