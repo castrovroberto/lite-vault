@@ -36,14 +36,14 @@
 - **Rationale:**
     - Makes the engine configurable for different DB instances and roles (F-DB-200).
 
-#### 24. [ ] Implement PostgreSQL Connection Management
+#### 24. [x] Implement PostgreSQL Connection Management
 - **Description:**
     - Implement logic within `PostgresSecretsEngine` to establish and manage connections to the target PostgreSQL database using the configured admin credentials.
     - Consider using a connection pool (e.g., HikariCP, managed by Spring Boot if possible) for efficiency.
 - **Rationale:**
     - Enables the engine to interact with the target database.
 
-#### 25. [ ] Implement Credential Generation Logic
+#### 25. [x] Implement Credential Generation Logic
 - **Description:**
     - Implement the `generateCredentials(roleName)` method.
     - Retrieve the configured SQL creation template for the given `roleName`.

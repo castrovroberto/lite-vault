@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
++ **PostgreSQL Credential Generation (Task 25):**
++   Implemented the `generateCredentials` method in `PostgresSecretsEngine`.
++   Added helper methods for secure password generation (`generatePassword`) and unique username generation (`generateUsername`).
++   Added helper method (`prepareSqlStatements`) to replace `{{username}}` and `{{password}}` placeholders in configured SQL statements.
++   The engine now looks up the role definition from `MssmProperties`, generates credentials, executes the creation SQL using `JdbcTemplate`, and returns a `Lease` object containing the credentials and metadata (TTL, ID, etc.).
++   Includes error handling for missing roles (`RoleNotFoundException`) and database errors (`SecretsEngineException` wrapping `DataAccessException`).
++   Ensured generated passwords are not logged.
 - **PostgreSQL Connection Management (Task 24):**
   - Configured Spring Boot's primary `DataSource` via `spring.datasource.*` properties in `application-dev.yml`, referencing `mssm.secrets.db.postgres.*` values to connect to the target database.
   - Injected the auto-configured `JdbcTemplate` into `PostgresSecretsEngine`.

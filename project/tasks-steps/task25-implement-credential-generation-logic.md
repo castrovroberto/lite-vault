@@ -1,45 +1,19 @@
-package tech.yump.vault.secrets.db;
+# Task 25: Implement Credential Generation Logic
 
-import jakarta.annotation.PostConstruct;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.DataAccessException;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.stereotype.Service;
-import tech.yump.vault.config.MssmProperties;
-import tech.yump.vault.secrets.DynamicSecretsEngine;
-import tech.yump.vault.secrets.Lease;
-import tech.yump.vault.secrets.LeaseNotFoundException;
-import tech.yump.vault.secrets.RoleNotFoundException;
-import tech.yump.vault.secrets.SecretsEngineException;
+Okay, let's implement the core logic for Task 25: Implement Credential Generation Logic within the PostgresSecretsEngine.This involves replacing the UnsupportedOperationException in generateCredentials with the actual steps to:1.Look up the role configuration.2.Generate a unique username and a secure password.3.Replace placeholders in the configured SQL statements.4.Execute the SQL statements using JdbcTemplate.5.Create and return a Lease object containing the credentials and metadata.Here's the step-by-step guide:Step 1: Add Helper Methods for Username/Password GenerationWe need utilities to create unique usernames and secure random passwords. Let's add these as private methods within PostgresSecretsEngine.1.Open /Users/robertocastro/dev/lite-vault/src/main/java/tech/yump/vault/secrets/db/PostgresSecretsEngine.java.2.Add the necessary imports:
 
-import javax.sql.DataSource;
-import java.security.SecureRandom;
-import java.sql.Connection;
-import java.sql.SQLException;
-import java.time.Instant;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+    import java.security.SecureRandom;
+    import java.time.Instant;
+    import java.util.HashMap;
+    import java.util.List;
+    import java.util.Map;
+    import java.util.Objects;
+    import org.springframework.dao.DataAccessException; // Import Spring DAO exception
+    
+3.Add the following private helper methods to the class:
 
-/**
- * Secrets Engine implementation for dynamically generating PostgreSQL credentials.
- */
-@Slf4j
-@Service // Register as a Spring Bean
-@RequiredArgsConstructor // Creates constructor for final fields (dependency injection)
-public class PostgresSecretsEngine implements DynamicSecretsEngine {
+    // Inside PostgresSecretsEngine class
 
-    // Dependencies injected via constructor by Lombok's @RequiredArgsConstructor
-    private final MssmProperties properties;
-    private final DataSource dataSource; // Spring Boot auto-configures this
-    private final JdbcTemplate jdbcTemplate; // Spring Boot auto-configures this based on primary DataSource
-
-    // Connection pool is managed by the injected DataSource (HikariCP by default)
-    // TODO: Add fields for in-memory lease tracking (Task 26)
-
-    // --- START: Helper methods from Task 25 Step 1 ---
     private static final String ALLOWED_PASSWORD_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()-_=+";
     private static final int DEFAULT_PASSWORD_LENGTH = 32;
     private static final String USERNAME_PREFIX = "lv-"; // LiteVault prefix
@@ -98,50 +72,15 @@ public class PostgresSecretsEngine implements DynamicSecretsEngine {
      * @return A list of SQL statements with placeholders replaced.
      */
     private List<String> prepareSqlStatements(List<String> statements, String username, String password) {
-        // Be cautious with password replacement if it contains single quotes or other special chars
-        // The current generatePassword() avoids single quotes, but this is a potential vulnerability point.
-        // Using PreparedStatement for DDL is often not possible or practical across different DBs.
         return statements.stream()
                 .map(sql -> sql.replace("{{username}}", username)
-                        .replace("{{password}}", password))
+                               .replace("{{password}}", password)) // Be cautious with password replacement if it contains single quotes
                 .toList();
     }
-    // --- END: Helper methods from Task 25 Step 1 ---
+    
 
+Step 2: Implement the generateCredentials Method LogicNow, replace the content of the existing generateCredentials method with the actual logic using the helpers and injected dependencies.
 
-    /**
-     * Simple check after initialization to verify DB connection using the configured DataSource.
-     */
-    @PostConstruct
-    public void checkDbConnection() {
-        log.info("Checking connection to target PostgreSQL database via configured DataSource...");
-        try (Connection connection = dataSource.getConnection()) {
-            if (connection.isValid(2)) { // Check validity with a 2-second timeout
-                String url = connection.getMetaData().getURL();
-                String user = connection.getMetaData().getUserName();
-                log.info("Successfully established connection to target PostgreSQL database: URL='{}', User='{}'", url, user);
-                // Optional: Use jdbcTemplate for a simple query test
-                // Integer result = jdbcTemplate.queryForObject("SELECT 1", Integer.class);
-                // log.info("Successfully executed test query (SELECT 1) on target database. Result: {}", result);
-            } else {
-                log.error("Failed to establish a valid connection to the target PostgreSQL database (isValid returned false). Check credentials and DB status.");
-                // Consider throwing a specific exception here to prevent startup if connection is mandatory
-                // throw new IllegalStateException("Failed to establish valid connection to target PostgreSQL DB.");
-            }
-        } catch (SQLException e) {
-            log.error("Failed to connect to the target PostgreSQL database during startup check: {}. Check URL, credentials, driver, and DB status.", e.getMessage());
-            // Log details without full stack trace unless DEBUG is enabled
-            log.debug("SQL Exception details:", e);
-            // Consider throwing
-            // throw new SecretsEngineException("Failed to initialize connection to target PostgreSQL database", e);
-        } catch (Exception e) {
-            // Catch other potential errors during connection test (e.g., from jdbcTemplate)
-            log.error("An unexpected error occurred during database connection check: {}", e.getMessage(), e);
-            // Consider throwing
-        }
-    }
-
-    // --- START: Implementation of generateCredentials from Task 25 Step 2 ---
     @Override
     public Lease generateCredentials(String roleName) throws SecretsEngineException, RoleNotFoundException {
         log.info("Attempting to generate credentials for DB role: {}", roleName);
@@ -200,7 +139,7 @@ public class PostgresSecretsEngine implements DynamicSecretsEngine {
         // Store generated credentials in the lease data map
         Map<String, Object> secretData = new HashMap<>();
         secretData.put("username", username);
-        secretData.put("password", password); // Store the password in the lease data
+        secretData.put("password", password);
 
         Lease lease = new Lease(
                 leaseId,
@@ -220,19 +159,25 @@ public class PostgresSecretsEngine implements DynamicSecretsEngine {
         // 7. Return Lease
         return lease;
     }
-    // --- END: Implementation of generateCredentials from Task 25 Step 2 ---
 
+Step 3: Review and Verify1.Imports: Ensure all necessary imports (java.security.SecureRandom, java.time.Instant, java.util.*, org.springframework.dao.DataAccessException, etc.) are present and resolved.2.Placeholders: Double-check that the placeholders {{username}} and {{password}} in your application-dev.yml creationStatements match the strings used in prepareSqlStatements.3.Error Handling: The code now throws RoleNotFoundException if the role isn't configured and SecretsEngineException if database errors occur during SQL execution.4.Password Logging: Verify that the generated password is not logged anywhere.5.Lease Data: Confirm that the Lease object is created with the correct details (ID, role name, generated username/password in secretData, TTL from config).Step 4: Test (Manual/Integration)1.Run the Application: Make sure your target DB is running and configured correctly (Task 23/24).2.Use curl (or similar): Send a request to the API endpoint created in Task 27.
 
-    @Override
-    public void revokeLease(UUID leaseId) throws SecretsEngineException, LeaseNotFoundException {
-        log.warn("PostgresSecretsEngine.revokeLease for lease ID '{}' is not yet implemented.", leaseId);
-        // TODO: Implement lease revocation logic (Future Task, beyond Phase 3 initial scope)
-        // 1. Look up lease details (username) from in-memory map using leaseId (Task 26)
-        // 2. Look up role configuration (revocation SQL) (Task 23)
-        // 3. Use injected jdbcTemplate (which uses the DataSource/pool) (Task 24/Future)
-        // 4. Execute revocation SQL statements using jdbcTemplate.execute() or update()
-        // 5. Remove lease from in-memory map (Task 26)
-        throw new UnsupportedOperationException("revokeLease not implemented yet");
-    }
+    # Use a token with appropriate permissions (e.g., dev-root-token)
+    # Use a role name configured in application-dev.yml (e.g., readonly-app-role)
+    TOKEN="dev-root-token"
+    ROLE="readonly-app-role"
 
-}
+    curl -k -H "X-Vault-Token: $TOKEN" https://localhost:8443/v1/db/creds/$ROLE
+    
+
+3.Expected Result:•You should receive a JSON response similar to this (IDs, password, and exact duration will vary):
+
+        {
+          "leaseId": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+          "username": "lv-readonly-app-role-a3b1c2d4",
+          "password": "GENERATED_SECURE_PASSWORD",
+          "leaseDurationSeconds": 3600
+        }
+        
+
+•Check the LiteVault application logs for messages indicating successful role lookup, SQL execution, and lease creation.•Check the target PostgreSQL database to confirm that the new user (e.g., lv-readonly-app-role-a3b1c2d4) has been created with the expected permissions.4.Test Failure Cases:•Request an unconfigured role -> Expect 404 Not Found.•If the database connection fails or SQL is invalid -> Expect 500 Internal Server Error (check logs for SecretsEngineException).With these steps, the core logic for generating dynamic PostgreSQL credentials is now implemented, completing Task 25. The next step (Task 26) will focus on tracking these generated leases in memory.
