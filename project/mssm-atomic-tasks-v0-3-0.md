@@ -67,7 +67,7 @@
   - Associates a lifetime with generated credentials (F-DB-210).
   - Implements the basic revocation mechanism for cleanup (F-DB-230).
 
-#### 27. [ ] Create API Endpoints for DB Credentials
+#### 27. [x] Create API Endpoints for DB Credentials
 - **Description:**
   - Implement a `DbController` (e.g., under `/v1/db`).
   - Create endpoint `GET /creds/{role_name}` (or POST) to request new credentials for a configured role.
