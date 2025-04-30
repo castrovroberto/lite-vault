@@ -351,12 +351,9 @@ class KVControllerIntegrationTest {
                         .header(StaticTokenAuthFilter.VAULT_TOKEN_HEADER, ROOT_TOKEN) // Use test token
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(secrets1)))
-                .andExpect(status().isServiceUnavailable()) // 503
-                // The message comes from KVController's exception handler
-                .andExpect(jsonPath("$.message", is("Vault is sealed.")));
-
-        // Optional: Unseal again if other tests in the same run need it unsealed
-        // sealManager.unseal(mssmProperties.master().b64());
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.detail", is("Vault is sealed.")))
+                .andExpect(jsonPath("$.title", is("Vault Sealed")));
     }
 
     // Add logging import if not present

@@ -79,8 +79,11 @@
     <dependency>
       <groupId>com.fasterxml.jackson.datatype</groupId>
       <artifactId>jackson-datatype-jsr310</artifactId>
-      <!-- Needed for proper serialization/deserialization of Java 8+ time types (Instant, etc.) -->
-      <!-- Version managed by spring-boot-starter-parent -->
+    </dependency>
+    <dependency>
+      <groupId>com.google.code.findbugs</groupId>
+      <artifactId>jsr305</artifactId>
+      <version>3.0.2</version>
     </dependency>
 
     <!-- == Testing == -->

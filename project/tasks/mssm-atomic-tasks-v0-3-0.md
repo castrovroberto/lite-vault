@@ -88,7 +88,7 @@
 - **Rationale:**
   - Provides audit trail for dynamic secret generation and revocation (F-CORE-130).
 
-#### 29. [ ] Write Unit Tests for PostgreSQL Engine
+#### 29. [x] Write Unit Tests for PostgreSQL Engine
 - **Description:**
   - Write unit tests for `PostgresSecretsEngine`.
   - Mock database interactions (JDBC calls) to test SQL template rendering and parameter substitution logic.
@@ -97,7 +97,7 @@
 - **Rationale:**
   - Verifies the engine's internal logic without requiring a live database.
 
-#### 30. [ ] Write Integration Tests for DB Credential API
+#### 30. [x] Write Integration Tests for DB Credential API
 - **Description:**
   - Write Spring Boot integration tests (`@SpringBootTest`).
   - Consider using Testcontainers to spin up a temporary PostgreSQL instance.

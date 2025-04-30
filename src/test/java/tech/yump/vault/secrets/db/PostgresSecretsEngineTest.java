@@ -12,8 +12,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.CannotGetJdbcConnectionException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import tech.yump.vault.audit.AuditBackend;
-import tech.yump.vault.audit.AuditEvent;
+import tech.yump.vault.audit.AuditHelper;
 import tech.yump.vault.config.MssmProperties;
 import tech.yump.vault.core.SealManager;
 import tech.yump.vault.secrets.Lease;
@@ -32,11 +31,13 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode; // Added for simplified verification
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doThrow;
@@ -57,9 +58,11 @@ class PostgresSecretsEngineTest {
     @Mock
     private JdbcTemplate mockJdbcTemplate;
     @Mock
-    private AuditBackend mockAuditBackend;
-    @Mock
     private SealManager mockSealManager;
+    @Mock
+    private AuditHelper mockAuditHelper; // Keep AuditHelper mock
+
+    // Removed: @Mock private AuditBackend mockAuditBackend;
 
     @Mock
     private Connection mockConnection;
@@ -71,8 +74,8 @@ class PostgresSecretsEngineTest {
 
     @Captor
     private ArgumentCaptor<String> sqlCaptor;
-    @Captor
-    private ArgumentCaptor<AuditEvent> auditEventCaptor;
+
+    // Removed: @Captor private ArgumentCaptor<AuditEvent> auditEventCaptor;
 
     private final String TEST_ROLE_NAME = "test-role";
     private final Duration TEST_TTL = Duration.ofHours(1);
@@ -209,15 +212,19 @@ class PostgresSecretsEngineTest {
         assertThat(executedSql.get(0)).doesNotContain("{{password}}");
         assertThat(executedSql.get(1)).contains(generatedUsername); // Check second statement
 
-        // Verify Audit Log
-        verify(mockAuditBackend).logEvent(auditEventCaptor.capture());
-        AuditEvent auditEvent = auditEventCaptor.getValue();
-        assertThat(auditEvent.type()).isEqualTo("db_operation");
-        assertThat(auditEvent.action()).isEqualTo("lease_creation");
-        assertThat(auditEvent.outcome()).isEqualTo("success");
-        assertThat(auditEvent.data()).containsEntry("lease_id", resultLease.id().toString());
-        assertThat(auditEvent.data()).containsEntry("role_name", TEST_ROLE_NAME);
-        assertThat(auditEvent.data()).doesNotContainKey("password"); // Ensure password not logged
+        // --- UPDATED Audit Log Verification ---
+        // Verify interaction with AuditHelper instead of AuditBackend
+        verify(mockAuditHelper).logInternalEvent(
+                eq("db_operation"),              // type
+                eq("lease_creation"),           // action
+                eq("success"),                  // outcome
+                isNull(),                       // principal (expecting null as passed by engine)
+                eq(Map.of(                      // data
+                        "lease_id", resultLease.id().toString(),
+                        "role_name", TEST_ROLE_NAME
+                ))
+        );
+        // --- END UPDATED Audit Log Verification ---
 
         // Verify Lease stored (indirectly by checking revokeLease behavior later)
     }
@@ -238,7 +245,7 @@ class PostgresSecretsEngineTest {
 
         // Verify no DB interaction or audit logging occurred
         verifyNoInteractions(mockJdbcTemplate);
-        verifyNoInteractions(mockAuditBackend);
+        verifyNoInteractions(mockAuditHelper); // Also verify no audit helper interaction
     }
 
     @Test
@@ -257,9 +264,7 @@ class PostgresSecretsEngineTest {
 
         // Verify SQL was attempted (at least once)
         verify(mockJdbcTemplate, atLeastOnce()).execute(sqlCaptor.capture());
-        // Verify no audit log for successful lease creation
-        verifyNoInteractions(mockAuditBackend);
-        // Verify lease was NOT stored (difficult to check map directly, rely on revoke tests)
+        verifyNoInteractions(mockAuditHelper); // No audit log on creation failure path yet
     }
 
     // --- Tests for revokeLease ---
@@ -272,7 +277,7 @@ class PostgresSecretsEngineTest {
         UUID leaseId = leaseToRevoke.id();
         String username = (String) leaseToRevoke.secretData().get("username");
         // Clear interactions from the generateCredentials call for clean verification
-        clearInvocations(mockJdbcTemplate, mockAuditBackend);
+        clearInvocations(mockJdbcTemplate, mockAuditHelper); // Clear AuditHelper mock too
 
         // Act
         postgresSecretsEngine.revokeLease(leaseId);
@@ -286,12 +291,13 @@ class PostgresSecretsEngineTest {
         assertThat(executedSql.get(1)).contains(username);
 
         // Verify Audit Log
-        verify(mockAuditBackend).logEvent(auditEventCaptor.capture());
-        AuditEvent auditEvent = auditEventCaptor.getValue();
-        assertThat(auditEvent.type()).isEqualTo("db_operation");
-        assertThat(auditEvent.action()).isEqualTo("revoke_lease");
-        assertThat(auditEvent.outcome()).isEqualTo("success");
-        assertThat(auditEvent.data()).containsEntry("lease_id", leaseId.toString());
+        verify(mockAuditHelper).logInternalEvent(
+                eq("db_operation"),
+                eq("revoke_lease"),
+                eq("success"),
+                isNull(),
+                eq(Map.of("lease_id", leaseId.toString()))
+        );
 
         // Verify Lease removed (by trying to revoke again)
         assertThatThrownBy(() -> postgresSecretsEngine.revokeLease(leaseId))
@@ -311,7 +317,7 @@ class PostgresSecretsEngineTest {
 
         // Verify no DB interaction or audit logging occurred
         verifyNoInteractions(mockJdbcTemplate);
-        verifyNoInteractions(mockAuditBackend);
+        verifyNoInteractions(mockAuditHelper); // Also verify no audit helper interaction
     }
 
     @Test
@@ -320,7 +326,8 @@ class PostgresSecretsEngineTest {
         // Arrange: Generate a lease first
         Lease leaseToRevoke = postgresSecretsEngine.generateCredentials(TEST_ROLE_NAME);
         UUID leaseId = leaseToRevoke.id();
-        clearInvocations(mockJdbcTemplate, mockAuditBackend);
+        // Clear interactions from generate
+        clearInvocations(mockJdbcTemplate, mockAuditHelper);
 
         // Arrange: Mock properties to return no roles during the revoke call
         // This overrides the lenient mock from setUp for this specific interaction
@@ -333,7 +340,7 @@ class PostgresSecretsEngineTest {
 
         // Verify no DB interaction or audit logging occurred during the failed attempt
         verifyNoInteractions(mockJdbcTemplate);
-        verifyNoInteractions(mockAuditBackend);
+        verifyNoInteractions(mockAuditHelper); // Also verify no audit helper interaction
 
         // --- Simplified Verification: Lease NOT removed by the failed attempt ---
         // 1. Restore the mock for the roles map to its original state from setUp
@@ -359,7 +366,8 @@ class PostgresSecretsEngineTest {
         Lease leaseToRevoke = postgresSecretsEngine.generateCredentials(TEST_ROLE_NAME);
         UUID leaseId = leaseToRevoke.id();
         String username = (String) leaseToRevoke.secretData().get("username");
-        clearInvocations(mockJdbcTemplate, mockAuditBackend);
+        // Clear interactions from generate
+        clearInvocations(mockJdbcTemplate, mockAuditHelper);
 
         // Arrange: Mock DB error during revocation
         DataAccessException dbException = new CannotGetJdbcConnectionException("Test Revocation DB Error");
@@ -377,13 +385,16 @@ class PostgresSecretsEngineTest {
         assertThat(sqlCaptor.getValue()).contains(username); // Verify it tried the correct SQL
 
         // Verify Audit Log for FAILURE
-        verify(mockAuditBackend).logEvent(auditEventCaptor.capture());
-        AuditEvent auditEvent = auditEventCaptor.getValue();
-        assertThat(auditEvent.type()).isEqualTo("db_operation");
-        assertThat(auditEvent.action()).isEqualTo("revoke_lease");
-        assertThat(auditEvent.outcome()).isEqualTo("failure");
-        assertThat(auditEvent.data()).containsEntry("lease_id", leaseId.toString());
-        assertThat(auditEvent.data()).containsEntry("error", dbException.getMessage());
+        verify(mockAuditHelper).logInternalEvent(
+                eq("db_operation"),
+                eq("revoke_lease"),
+                eq("failure"),
+                isNull(),
+                eq(Map.of(
+                        "lease_id", leaseId.toString(),
+                        "error", dbException.getMessage() // Verify error message is included
+                ))
+        );
 
         // Verify Lease NOT removed: Attempt to revoke again, it should fail the same way
         // because the lease still exists and the DB error mock is still active.
