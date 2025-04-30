@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Basic ACL Enforcement (Task 15):**
+  - Implemented `PolicyRepository` to load and cache policy definitions from configuration.
+  - Created `PolicyEnforcementFilter` which runs after `StaticTokenAuthFilter`.
+  - The filter retrieves the authenticated token's associated policy names (via `POLICY_` authorities).
+  - It loads the corresponding `PolicyDefinition`s from the `PolicyRepository`.
+  - It checks if any rule within the user's policies grants the required capability (READ, WRITE, DELETE based on HTTP method) for the requested API path (using basic prefix/wildcard matching).
+  - If access is not granted by any policy rule, the filter returns a 403 Forbidden response.
+  - Integrated the `PolicyEnforcementFilter` into `SecurityConfig`.
 - **Policy Structure Definition (Task 14):**
   - Defined data structures (`PolicyDefinition`, `PolicyRule`, `PolicyCapability`) in `tech.yump.vault.auth.policy` for representing ACLs.
   - Defined `StaticTokenPolicyMapping` record to link tokens to policy names.
@@ -57,18 +65,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Initialized project structure with Maven and Spring Boot.
 
 ### Changed
+- **Security Configuration:** `SecurityConfig` now includes `PolicyEnforcementFilter` in the filter chain, placed after `StaticTokenAuthFilter`.
 - **Static Token Configuration (Task 14):**
   - Updated `mssm.auth.static-tokens` configuration in `MssmProperties` and `application-dev.yml` to use a `mappings` list (`List<StaticTokenPolicyMapping>`) instead of the old `tokens` set. This links tokens directly to a list of policy names.
 - **Authentication Filter (Task 14):**
   - Updated `StaticTokenAuthFilter` to read the new `mappings` structure.
   - Upon successful token validation, the filter now extracts the associated policy names and stores them as `GrantedAuthority` objects (prefixed with `POLICY_`) in the `SecurityContext`. This prepares the context for ACL enforcement in Task 15.
-- **API Access:** Most API endpoints (including `/v1/**`) now require authentication via the `X-Vault-Token` header when static token auth is enabled. `/` and `/sys/seal-status` remain public.
+- **API Access:** Most API endpoints (including `/v1/**`) now require authentication via the `X-Vault-Token` header when static token auth is enabled. `/` and `/sys/seal-status` remain public. Access to authenticated endpoints is now further restricted by ACL policies (Task 15).
 - **Configuration Usage:** Refactored components to use type-safe `MssmProperties`.
 - **Configuration Structure:** Adjusted `application-dev.yml` to match `MssmProperties`.
 - **API Server:** Runs on HTTPS.
 - **Encryption Service:** Depends on `SealManager` for the master key.
+- **Testing:** Updated `lite-vault-cli.sh` to include tests specifically for policy enforcement scenarios using different tokens.
 
 ### Fixed
+- **Configuration Binding:** Corrected structure in `application-dev.yml` under `mssm.policies` to prevent `ConverterNotFoundException` during startup (removed incomplete entry, fixed rule structure).
+- **Configuration Consistency:** Ensured policy names referenced in `mssm.auth.static-tokens.mappings` match those defined in `mssm.policies` in `application-dev.yml`.
 - **Storage Path Traversal Check:** Normalized the `basePath` in `FileSystemStorageBackend` constructor to prevent false positive path traversal errors when comparing against normalized resolved paths.
 - **Security Config:** Removed an outdated comment regarding null checks and accessor usage in `SecurityConfig.java`.
 - **KV Secret Engine:** Corrected the interaction between `FileSystemKVSecretEngine` and `EncryptionService`/`EncryptedData` regarding nonce/ciphertext handling.
@@ -80,7 +92,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Custom Token Validator (Task 14):** Removed the custom validation annotation (`@ValidStaticTokenConfig`) and its validator (`StaticTokenConfigValidator`) as standard bean validation (`@NotEmpty`, `@Valid`) on the new `mappings` list provides equivalent checks.
 
 ### Security
-- **API Authentication (F-CORE-110):** Implemented basic static token authentication. Tokens are now linked to named policies (Task 14), although enforcement is pending (Task 15).
+- **Authorization (F-CORE-120):** Implemented basic ACL enforcement (Task 15). Access to API endpoints (like `/v1/kv/data/**`) is now controlled by policies defined in the configuration (`mssm.policies`) and linked to static tokens (`mssm.auth.static-tokens.mappings`). The `PolicyEnforcementFilter` denies access (403 Forbidden) if no applicable policy rule grants the required capability (READ, WRITE, DELETE) for the requested path.
+- **API Authentication (F-CORE-110):** Implemented basic static token authentication. Tokens are now linked to named policies (Task 14), and these policies are enforced (Task 15).
 - **Configuration Validation:** Added startup validation for required configuration properties, including token mappings if static auth is enabled.
 - **Encryption in Transit:** API communication encrypted using TLS 1.2/1.3 (NFR-SEC-110) via self-signed cert for dev.
 - **Keystore Password:** Required via `MSSM_KEYSTORE_PASSWORD` env var.

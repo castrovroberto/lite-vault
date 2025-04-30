@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # lite-vault-cli.sh
-# An interactive script to test basic LiteVault API features.
+# An interactive script to test basic LiteVault API features, including policy enforcement.
 
 # --- Default Configuration ---
 DEFAULT_HOST="localhost"
@@ -65,17 +65,20 @@ PORT=""
 PROTOCOL=""
 BASE_URL=""
 CURL_OPTS=""
-VAULT_TOKEN="" # Will be prompted for
-# Example valid tokens from application-dev.yml (for user reference)
-VALID_TOKEN_EXAMPLE_1="dev-root-token"
-VALID_TOKEN_EXAMPLE_2="app-token-readonly"
-INVALID_TOKEN="invalid-dummy-token-12345"
+# VAULT_TOKEN="" # No longer prompted for, using specific tokens below
+
+# --- Specific Tokens for Policy Testing (from application-dev.yml) ---
+ROOT_TOKEN="dev-root-token"
+READONLY_TOKEN="app-token-readonly" # Has kv-read-only policy (kv/data/* READ/LIST)
+MYAPP_WRITE_TOKEN="app-write-token" # Has myapp-read-only & myapp-write-delete (myapp/* READ/LIST/WRITE/DELETE)
+NOACCESS_TOKEN="no-access-token" # Has non-existent-policy
+INVALID_TOKEN="invalid-dummy-token-12345" # A token not in config at all
 
 # --- Test Statistics ---
 tests_run=0
 tests_passed=0
 tests_failed=0
-tests_skipped=0
+tests_skipped=0 # Keep skipped count for potential future use (e.g., unmet dependencies)
 
 reset_stats() {
     tests_run=0
@@ -86,15 +89,15 @@ reset_stats() {
 
 # --- Core Request Function ---
 # Function to make requests and check status/basic content
-# Usage: make_request <METHOD> <PATH> [EXPECTED_STATUS] [TOKEN_TYPE] [JQ_QUERY] [EXPECTED_VALUE] [BODY_DATA]
-# TOKEN_TYPE: "VALID", "INVALID", or "" (for none)
-# Returns: 0 on pass, 1 on fail, 2 on skip
+# Usage: make_request <METHOD> <PATH> [EXPECTED_STATUS] [TOKEN] [JQ_QUERY] [EXPECTED_VALUE] [BODY_DATA]
+# TOKEN: Literal token string, "INVALID", or "" (for none)
+# Returns: 0 on pass, 1 on fail
 # DOES NOT MODIFY GLOBAL COUNTERS
 make_request() {
   local method="$1"
   local path="$2"
   local expected_status="${3:-200}"
-  local token_type="$4" # "VALID", "INVALID", ""
+  local token_arg="$4" # Literal token string, "INVALID", ""
   local jq_query="$5" # Optional: jq query string (e.g., '.status')
   local expected_value="$6" # Optional: Expected value for jq query
   local body_data="$7" # Optional: Request body data
@@ -107,21 +110,16 @@ make_request() {
   local curl_cmd_display="curl $CURL_OPTS -w '\\nHTTP_STATUS:%{http_code}' -X '$method'" # For verbose display
 
   # --- Token Handling ---
-  if [[ "$token_type" == "VALID" ]]; then
-    current_token="$VAULT_TOKEN"
-    if [[ -z "$current_token" ]]; then
-        print_warn "$test_desc - Skipping test: VALID token requested but none was provided at script start."
-        # Note: Caller function should increment skipped count
-        return 2 # Skipped
-    fi
-    headers+=("-H" "X-Vault-Token: $current_token")
-    curl_cmd_display+=" -H 'X-Vault-Token: ***'" # Mask token in display
-    test_desc="$test_desc (Token: VALID)"
-  elif [[ "$token_type" == "INVALID" ]]; then
+  if [[ "$token_arg" == "INVALID" ]]; then
       current_token="$INVALID_TOKEN"
       headers+=("-H" "X-Vault-Token: $current_token")
       curl_cmd_display+=" -H 'X-Vault-Token: $current_token'"
       test_desc="$test_desc (Token: INVALID)"
+  elif [[ -n "$token_arg" ]]; then # Treat non-empty, non-"INVALID" as a literal token
+      current_token="$token_arg"
+      headers+=("-H" "X-Vault-Token: $current_token")
+      curl_cmd_display+=" -H 'X-Vault-Token: ***'" # Mask token in display
+      test_desc="$test_desc (Token: Provided)"
   else
       test_desc="$test_desc (Token: NONE)"
   fi
@@ -158,13 +156,15 @@ make_request() {
   # --- Optional JSON Check ---
   if jq_exists && [[ -n "$jq_query" && -n "$expected_value" ]]; then
      actual_value=$(echo "$body" | jq -r "$jq_query" 2>/dev/null)
-     if [[ -z "$actual_value" && "$expected_value" == "null" ]]; then
-         actual_value="null"
+     # Handle jq returning empty string for null values correctly
+     if [[ -z "$actual_value" || "$actual_value" == "null" ]] && [[ "$expected_value" == "null" ]]; then
+         actual_value="null" # Normalize for comparison
      fi
 
      if [[ "$actual_value" == "$expected_value" ]]; then
        print_ok "$test_desc - JSON check passed: '$jq_query' is '$actual_value'."
      else
+       # Check if the body was valid JSON at all before complaining about the value
        if ! echo "$body" | jq -e . > /dev/null 2>&1 && [[ -n "$body" ]]; then
             print_fail "$test_desc - JSON check failed: Response is not valid JSON. Body: $body"
        else
@@ -174,8 +174,10 @@ make_request() {
        return 1 # Fail
      fi
   elif [[ -n "$jq_query" && -n "$expected_value" ]]; then
+      # jq not found, do basic check if query/value were provided
       print_warn "$test_desc - jq not found, skipping specific JSON value check for '$jq_query'. Performing basic check."
-      if echo "$body" | grep -q "\"$expected_value\""; then
+      # Basic check: does the body contain the expected value as a substring (crude)
+      if echo "$body" | grep -q "$expected_value"; then
           print_ok "$test_desc - Basic check passed: Body seems to contain '$expected_value'."
       else
           print_fail "$test_desc - Basic check failed: Body does not seem to contain '$expected_value'. Body: $body"
@@ -261,7 +263,7 @@ test_auth_no_token() {
     local protected_path="/v1/kv/data/auth-test/no-token"
     print_info "Attempting access to protected path: $protected_path"
 
-    # Expect 401 (Unauthorized) or 403 (Forbidden)
+    # Expect 401 (Unauthorized) or 403 (Forbidden) - Spring Security might return 401 first if no auth at all
     make_request "GET" "$protected_path" 401 ""
     local result=$?
     if [[ $result -ne 0 ]]; then
@@ -287,7 +289,8 @@ test_auth_invalid_token() {
     local protected_path="/v1/kv/data/auth-test/invalid-token"
     print_info "Attempting access to protected path: $protected_path"
 
-    # Expect 403 (Forbidden) or 401 (Unauthorized)
+    # Expect 403 (Forbidden) - StaticTokenAuthFilter runs, finds no match, proceeds, PolicyEnforcementFilter denies
+    # Or potentially 401 if Spring Security ExceptionTranslationFilter handles it earlier based on config. Let's check 403 first.
     make_request "GET" "$protected_path" 403 "INVALID"
     local result=$?
      if [[ $result -ne 0 ]]; then
@@ -307,21 +310,18 @@ test_auth_invalid_token() {
     return $result
 }
 
-test_auth_valid_token() {
-    print_info "--- Running Test: Authentication (Valid Token) ---"
+# Renamed from test_auth_valid_token
+test_auth_root_token_nonexistent_path() {
+    print_info "--- Running Test: Auth (Root Token, Non-Existent Path) ---"
     ((tests_run++))
-    local protected_path="/v1/kv/data/auth-test/valid-token"
-    print_info "Attempting access to protected path: $protected_path"
+    local protected_path="/v1/kv/data/auth-test/non-existent"
+    print_info "Attempting access to non-existent path: $protected_path with Root Token"
 
-    # Expect 403 Forbidden because the path doesn't exist, AND ACL enforcement (Task 15) is not yet implemented.
-    make_request "GET" "$protected_path" 403 "VALID"
+    # Expect 404 Not Found. Root policy grants access, but KV engine won't find the path.
+    make_request "GET" "$protected_path" 404 "$ROOT_TOKEN"
     local result=$?
 
-    if [[ $result -eq 2 ]]; then # Check if skipped
-        ((tests_skipped++))
-        # Adjust tests_run back down since make_request didn't run it if skipped
-        ((tests_run--))
-    elif [[ $result -eq 0 ]]; then
+    if [[ $result -eq 0 ]]; then
         ((tests_passed++))
     else
         ((tests_failed++))
@@ -330,83 +330,119 @@ test_auth_valid_token() {
     return $result
 }
 
-# --- KV CRUD Test Function ---
-test_kv_crud() {
-    print_info "--- Running Test: KV CRUD Operations ---"
+# Renamed from test_kv_crud
+test_kv_crud_root_token() {
+    print_info "--- Running Test: KV CRUD Operations (Root Token) ---"
     ((tests_run++)) # Count this whole sequence as one test run
-    local test_path="/v1/kv/data/test/cli/secret1"
-    local test_data='{"user":"test-user","pass":"s3cr3t!","value":"123"}'
-    local step1_result=1 # Default to fail
-    local auth_checks_passed=1 # Default to fail
+    local test_path="/v1/kv/data/test/cli/root-crud"
+    local test_data='{"user":"root-test","pass":"s3cr3t!"}'
+    local final_result=0 # Assume pass initially
 
-    # --- Step 1: Write Secret (Valid Token) ---
-    print_info "Step 1: Writing secret to $test_path (Expecting 403)"
-    make_request "PUT" "$test_path" 403 "VALID" "" "" "$test_data"
-    step1_result=$?
+    # --- Step 1: Write Secret (Root Token) ---
+    print_info "Step 1: Writing secret to $test_path (Root Token - Expecting 204)"
+    make_request "PUT" "$test_path" 204 "$ROOT_TOKEN" "" "" "$test_data"
+    if [[ $? -ne 0 ]]; then final_result=1; fi
 
-    if [[ $step1_result -eq 2 ]]; then # Skipped
-        ((tests_skipped++))
-        ((tests_run--)) # Adjust run count
-        echo "--- Test Complete (Skipped) ---"
-        return 2
-    elif [[ $step1_result -ne 0 ]]; then # Failed (didn't get expected 403)
-        print_fail "KV Test Step 1 (PUT) failed - Did not receive expected 403."
-        ((tests_failed++))
-        echo "--- Test Failed ---"
-        return 1
-    fi
-    # If step1_result is 0, it means we correctly got 403. Proceed with auth checks.
-
-    # --- Steps 2-4 are skipped currently ---
-    print_info "Steps 2-4: Read, Delete, Read-After-Delete (Skipped - requires Step 1 success with 204/200)"
-
-    # --- Auth Checks (Run independently) ---
-    local auth_check_step5_ok=0
-    local auth_check_step6_ok=0
-
-    # --- Step 5: Attempt Write (No Token) ---
-    print_info "Step 5: Attempting write with NO token to $test_path (Expecting 401 or 403)"
-    make_request "PUT" "$test_path" 401 "" "" "" "$test_data"
-    local result5=$?
-    if [[ $result5 -ne 0 ]]; then
-        make_request "PUT" "$test_path" 403 "" "" "" "$test_data"
-        result5=$?
-    fi
-    if [[ $result5 -eq 0 ]]; then
-        print_ok "[PUT $test_path] (No Token) - Received expected 401 or 403 status."
-        auth_check_step5_ok=1
+    # --- Step 2: Read Secret (Root Token) ---
+    if [[ $final_result -eq 0 ]]; then
+      print_info "Step 2: Reading secret from $test_path (Root Token - Expecting 200)"
+      make_request "GET" "$test_path" 200 "$ROOT_TOKEN" '.user' 'root-test'
+      if [[ $? -ne 0 ]]; then final_result=1; fi
     else
-        print_fail "[PUT $test_path] (No Token) - Write without token did not return 401 or 403."
+      print_warn "Skipping KV Read test due to previous step failure."
     fi
 
-    # --- Step 6: Attempt Read (Invalid Token) ---
-    print_info "Step 6: Attempting read with INVALID token from $test_path (Expecting 401 or 403)"
-    make_request "GET" "$test_path" 403 "INVALID"
-    local result6=$?
-    if [[ $result6 -ne 0 ]]; then
-        make_request "GET" "$test_path" 401 "INVALID"
-        result6=$?
-    fi
-     if [[ $result6 -eq 0 ]]; then
-        print_ok "[GET $test_path] (Invalid Token) - Received expected 403 or 401 status."
-        auth_check_step6_ok=1
+    # --- Step 3: Delete Secret (Root Token) ---
+     if [[ $final_result -eq 0 ]]; then
+      print_info "Step 3: Deleting secret at $test_path (Root Token - Expecting 204)"
+      make_request "DELETE" "$test_path" 204 "$ROOT_TOKEN"
+      if [[ $? -ne 0 ]]; then final_result=1; fi
     else
-        print_fail "[GET $test_path] (Invalid Token) - Read with invalid token did not return 403 or 401."
+      print_warn "Skipping KV Delete test due to previous step failure."
+    fi
+
+    # --- Step 4: Read Secret After Delete (Root Token) ---
+    if [[ $final_result -eq 0 ]]; then
+      print_info "Step 4: Reading secret after delete from $test_path (Root Token - Expecting 404)"
+      make_request "GET" "$test_path" 404 "$ROOT_TOKEN"
+      if [[ $? -ne 0 ]]; then final_result=1; fi
+    else
+      print_warn "Skipping KV Read-After-Delete test due to previous step failure."
     fi
 
     # --- Determine Overall Result for this Test Group ---
-    if [[ $step1_result -eq 0 && $auth_check_step5_ok -eq 1 && $auth_check_step6_ok -eq 1 ]]; then
-        print_ok "KV CRUD Test Group Passed (Step 1 got expected 403, Auth checks passed)."
+    if [[ $final_result -eq 0 ]]; then
+        print_ok "KV CRUD Test Group (Root Token) Passed."
         ((tests_passed++))
         echo "--- Test Complete ---"
         return 0
     else
-        print_fail "KV CRUD Test Group Failed (Check Step 1 or Auth checks)."
-        # tests_failed was already incremented if Step 1 failed unexpectedly
-        # If Step 1 passed but auth checks failed, increment failed count here
-        if [[ $step1_result -eq 0 ]]; then
-             ((tests_failed++))
-        fi
+        print_fail "KV CRUD Test Group (Root Token) Failed (Check logs for specific step failure)."
+        ((tests_failed++))
+        echo "--- Test Failed ---"
+        return 1
+    fi
+}
+
+# NEW Test Function for Policy Enforcement
+test_policy_enforcement() {
+    print_info "--- Running Test: Policy Enforcement ---"
+    ((tests_run++)) # Count this whole sequence as one test run
+
+    local myapp_path="/v1/kv/data/myapp/policy-test"
+    local other_path="/v1/kv/data/other/policy-test"
+    local test_data='{"policy":"check"}'
+    local final_result=0 # Assume pass initially
+
+    # --- Test Cases ---
+    # Token             Method  Path         Expected Status   Permissions Check
+    # ----------------- ------- ------------ ---------------   ------------------------------------------------
+    # Root Token (Full Access)
+    print_info "Testing Root Token..."
+    make_request "PUT"    "$myapp_path" 204 "$ROOT_TOKEN" "" "" "$test_data" || final_result=1
+    make_request "GET"    "$myapp_path" 200 "$ROOT_TOKEN" '.policy' 'check' || final_result=1
+    make_request "PUT"    "$other_path" 204 "$ROOT_TOKEN" "" "" "$test_data" || final_result=1
+    make_request "GET"    "$other_path" 200 "$ROOT_TOKEN" '.policy' 'check' || final_result=1
+    make_request "DELETE" "$myapp_path" 204 "$ROOT_TOKEN" || final_result=1
+    make_request "DELETE" "$other_path" 204 "$ROOT_TOKEN" || final_result=1
+    make_request "GET"    "$myapp_path" 404 "$ROOT_TOKEN" || final_result=1 # Check deleted
+    make_request "GET"    "$other_path" 404 "$ROOT_TOKEN" || final_result=1 # Check deleted
+
+    # ReadOnly Token (kv-read-only policy: kv/data/* READ/LIST)
+    print_info "Testing ReadOnly Token..."
+    make_request "PUT"    "$myapp_path" 403 "$READONLY_TOKEN" "" "" "$test_data" || final_result=1 # Write Denied
+    make_request "PUT"    "$other_path" 403 "$READONLY_TOKEN" "" "" "$test_data" || final_result=1 # Write Denied
+    # Need to ensure something exists to read first (use root token)
+    make_request "PUT"    "$myapp_path" 204 "$ROOT_TOKEN" "" "" "$test_data" > /dev/null # Setup for read
+    make_request "GET"    "$myapp_path" 200 "$READONLY_TOKEN" '.policy' 'check' || final_result=1 # Read Allowed
+    make_request "DELETE" "$myapp_path" 403 "$READONLY_TOKEN" || final_result=1 # Delete Denied
+    # Cleanup
+    make_request "DELETE" "$myapp_path" 204 "$ROOT_TOKEN" > /dev/null
+
+    # MyApp Write Token (myapp-read-only, myapp-write-delete: myapp/* READ/LIST/WRITE/DELETE)
+    print_info "Testing MyApp Write Token..."
+    make_request "PUT"    "$myapp_path" 204 "$MYAPP_WRITE_TOKEN" "" "" "$test_data" || final_result=1 # Write Allowed (myapp)
+    make_request "GET"    "$myapp_path" 200 "$MYAPP_WRITE_TOKEN" '.policy' 'check' || final_result=1 # Read Allowed (myapp)
+    make_request "PUT"    "$other_path" 403 "$MYAPP_WRITE_TOKEN" "" "" "$test_data" || final_result=1 # Write Denied (other)
+    make_request "GET"    "$other_path" 403 "$MYAPP_WRITE_TOKEN" || final_result=1 # Read Denied (other)
+    make_request "DELETE" "$myapp_path" 204 "$MYAPP_WRITE_TOKEN" || final_result=1 # Delete Allowed (myapp)
+    make_request "GET"    "$myapp_path" 404 "$MYAPP_WRITE_TOKEN" || final_result=1 # Check deleted
+
+    # No Access Token (non-existent-policy)
+    print_info "Testing No Access Token..."
+    make_request "PUT"    "$myapp_path" 403 "$NOACCESS_TOKEN" "" "" "$test_data" || final_result=1 # Write Denied
+    make_request "GET"    "$myapp_path" 403 "$NOACCESS_TOKEN" || final_result=1 # Read Denied
+    make_request "DELETE" "$myapp_path" 403 "$NOACCESS_TOKEN" || final_result=1 # Delete Denied
+
+    # --- Determine Overall Result ---
+    if [[ $final_result -eq 0 ]]; then
+        print_ok "Policy Enforcement Test Group Passed."
+        ((tests_passed++))
+        echo "--- Test Complete ---"
+        return 0
+    else
+        print_fail "Policy Enforcement Test Group Failed (Check logs for specific step failure)."
+        ((tests_failed++))
         echo "--- Test Failed ---"
         return 1
     fi
@@ -421,22 +457,23 @@ run_all_tests() {
     test_seal_status
     test_auth_no_token
     test_auth_invalid_token
-    test_auth_valid_token
-    test_kv_crud
+    test_auth_root_token_nonexistent_path # Renamed test
+    test_kv_crud_root_token             # Renamed test
+    test_policy_enforcement             # New test
 
     echo # Extra newline
     print_info "*** Test Summary ***"
-    print_info "Total Tests Run:    $tests_run"
-    print_ok   "Tests Passed:     $tests_passed"
-    print_fail "Tests Failed:     $tests_failed"
-    print_warn "Tests Skipped:    $tests_skipped"
+    print_info "Total Test Groups Run: $tests_run"
+    print_ok   "Test Groups Passed:  $tests_passed"
+    print_fail "Test Groups Failed:  $tests_failed"
+    # print_warn "Tests Skipped:     $tests_skipped" # Can uncomment if skipping logic is added
     echo
 
     if [[ $tests_failed -eq 0 ]]; then
-        print_ok "*** ALL Tests Passed (or skipped gracefully) ***"
+        print_ok "*** ALL Test Groups Passed ***"
         return 0
     else
-        print_fail "*** Some Tests FAILED (Check log details. Failures in KV Step 1 are expected currently) ***"
+        print_fail "*** Some Test Groups FAILED (Check log details) ***"
         return 1 # Indicate overall failure
     fi
 }
@@ -455,8 +492,7 @@ else
 fi
 
 
-# 1. Get Configuration from User (unless already set via args maybe?)
-# For now, always prompt
+# 1. Get Configuration from User
 print_info "Please enter connection details:"
 read -p "Enter Host [$DEFAULT_HOST]: " HOST
 HOST=${HOST:-$DEFAULT_HOST}
@@ -480,26 +516,14 @@ fi
 
 # Append verbose flag to curl if needed
 if [[ "$VERBOSE_MODE" -eq 1 ]]; then
-    # Add -v to curl opts, but -s might override it. Let's remove -s if -v is used.
-    CURL_OPTS=$(echo "$CURL_OPTS" | sed 's/-s//g') # Remove -s
-    # CURL_OPTS+=" -v" # Add curl's verbose flag - maybe too much? Let's rely on our print_verbose for now.
-    print_info "Verbose mode enabled."
+    CURL_OPTS=$(echo "$CURL_OPTS" | sed 's/-s//g') # Remove -s if verbose
+    print_info "Verbose mode enabled (script output only, not curl -v)."
 fi
 
 
 echo
-print_warn "IMPORTANT: For tests requiring a 'VALID' token, you MUST enter"
-print_warn "           one of the tokens configured in application-dev.yml"
-print_warn "           (e.g., '$VALID_TOKEN_EXAMPLE_1' or '$VALID_TOKEN_EXAMPLE_2')."
-read -sp "Enter VALID Vault Token (X-Vault-Token) now (or leave blank to skip): " VAULT_TOKEN
-echo # Newline after password prompt
-if [[ -z "$VAULT_TOKEN" ]]; then
-    print_warn "No VALID Vault Token provided. Tests requiring a valid token will be skipped."
-elif [[ "$VAULT_TOKEN" != "$VALID_TOKEN_EXAMPLE_1" && "$VAULT_TOKEN" != "$VALID_TOKEN_EXAMPLE_2" ]]; then
-    print_warn "The token entered does not match the known examples. 'VALID' token tests might fail if incorrect."
-else
-    print_info "Valid Vault Token provided."
-fi
+# Removed the prompt for VAULT_TOKEN
+print_info "NOTE: Policy tests use specific tokens (e.g., '$ROOT_TOKEN', '$READONLY_TOKEN') hardcoded in the script."
 echo
 
 if ! jq_exists; then
@@ -517,8 +541,9 @@ options=(
     "Test Seal Status (/sys/seal-status)"
     "Test Auth - No Token (Protected Path)"
     "Test Auth - Invalid Token (Protected Path)"
-    "Test Auth - Valid Token (Protected Path - Expects 403)" # Updated description
-    "Test KV CRUD Operations (Step 1 Expects 403)" # Updated description
+    "Test Auth - Root Token (Non-Existent Path - Expects 404)" # Updated description
+    "Test KV CRUD - Root Token (Expects Success)" # Updated description
+    "Test Policy Enforcement (Multiple Tokens/Paths)" # New Test
     "Run All Tests"
     "Reconfigure Connection"
     "Quit"
@@ -529,15 +554,19 @@ while true; do
         case $opt in
             "Test Root Endpoint (/)" | "Test Seal Status (/sys/seal-status)" | "Test Auth - No Token (Protected Path)" | "Test Auth - Invalid Token (Protected Path)")
                 func_name=$(echo "$opt" | awk -F'(' '{print $1}' | sed 's/ /_/g' | sed 's/-/_/g' | tr '[:upper:]' '[:lower:]')
-                reset_stats; eval "$func_name"; print_info "Ran 1 test group. Passed: $tests_passed, Failed: $tests_failed, Skipped: $tests_skipped"
+                reset_stats; eval "$func_name"; print_info "Ran 1 test group. Passed: $tests_passed, Failed: $tests_failed"
                 break
                 ;;
-            "Test Auth - Valid Token (Protected Path - Expects 403)")
-                reset_stats; test_auth_valid_token; print_info "Ran 1 test group. Passed: $tests_passed, Failed: $tests_failed, Skipped: $tests_skipped"
+            "Test Auth - Root Token (Non-Existent Path - Expects 404)")
+                reset_stats; test_auth_root_token_nonexistent_path; print_info "Ran 1 test group. Passed: $tests_passed, Failed: $tests_failed"
                 break
                 ;;
-            "Test KV CRUD Operations (Step 1 Expects 403)")
-                reset_stats; test_kv_crud; print_info "Ran 1 test group. Passed: $tests_passed, Failed: $tests_failed, Skipped: $tests_skipped"
+            "Test KV CRUD - Root Token (Expects Success)")
+                reset_stats; test_kv_crud_root_token; print_info "Ran 1 test group. Passed: $tests_passed, Failed: $tests_failed"
+                break
+                ;;
+            "Test Policy Enforcement (Multiple Tokens/Paths)")
+                reset_stats; test_policy_enforcement; print_info "Ran 1 test group. Passed: $tests_passed, Failed: $tests_failed"
                 break
                 ;;
             "Run All Tests")
@@ -546,6 +575,7 @@ while true; do
                 ;;
             "Reconfigure Connection")
                 print_info "Please restart the script to reconfigure."
+                # Or could re-run the config section, but restart is simpler
                 break
                 ;;
             "Quit")

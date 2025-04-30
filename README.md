@@ -31,16 +31,20 @@ To provide a secure, centralized system for managing dynamic database credential
   - **Implemented:** Basic `GET /` endpoint available, returning a simple JSON status message.
   - **Implemented:** `GET /sys/seal-status` endpoint available, returning the current seal status (`{"sealed": true/false}`).
   - **Implemented (KV v1):** CRUD endpoints for the static Key/Value secrets engine under `/v1/kv/data/{path}` (Task 13):
-    - `PUT /v1/kv/data/{path}`: Write/update secrets (JSON body `{ "key": "value", ... }`). Requires authentication.
-    - `GET /v1/kv/data/{path}`: Read secrets (returns JSON map or 404). Requires authentication.
-    - `DELETE /v1/kv/data/{path}`: Delete secrets. Requires authentication.
+    - `PUT /v1/kv/data/{path}`: Write/update secrets (JSON body `{ "key": "value", ... }`). Requires authentication and authorization.
+    - `GET /v1/kv/data/{path}`: Read secrets (returns JSON map or 404). Requires authentication and authorization.
+    - `DELETE /v1/kv/data/{path}`: Delete secrets. Requires authentication and authorization.
 - **Authentication/Authorization:**
   - **Implemented (Basic Auth):** Static Token Authentication (Task 11). API requests (except `/` and `/sys/seal-status`) require a valid `X-Vault-Token` header.
   - **Defined (Policy Structure - Task 14):**
     - Data structures for policies (`PolicyDefinition`, `PolicyRule`, `PolicyCapability`) are defined.
     - Static tokens are now linked to one or more named policies via configuration (`mssm.auth.static-tokens.mappings` and `mssm.policies`).
-    - The authentication filter (`StaticTokenAuthFilter`) now identifies the policies associated with a valid token and stores them (as authorities like `POLICY_kv-reader`) in the security context, preparing for ACL enforcement (Task 15).
-    - **Note:** Actual ACL *enforcement* based on these policies is not yet implemented (Task 15).
+    - The authentication filter (`StaticTokenAuthFilter`) now identifies the policies associated with a valid token and stores them (as authorities like `POLICY_kv-reader`) in the security context.
+  - **Implemented (ACL Enforcement - Task 15):**
+    - A new `PolicyEnforcementFilter` runs after authentication.
+    - It uses the policies associated with the authenticated token (identified by the `POLICY_` authorities) to check if the request (HTTP method + path) is permitted.
+    - It consults the `PolicyRepository` (which loads policies from configuration) and evaluates the rules based on path (prefix/wildcard match) and required capability (READ, WRITE, DELETE).
+    - Access is denied with HTTP 403 Forbidden if no matching policy rule grants the necessary capability.
 - **Secrets Engines:**
   - **Implemented (KV v1):** A static Key/Value secrets engine (`FileSystemKVSecretEngine`) is implemented. It stores arbitrary key-value pairs at logical paths, encrypting the entire map as a single blob before persisting it using the configured `StorageBackend`. (Task 12)
 - **Configuration:**
@@ -49,6 +53,7 @@ To provide a secure, centralized system for managing dynamic database credential
   - **Implemented:** Configuration section `mssm.policies` for defining named policies and their rules (`PolicyDefinition`, `PolicyRule`). (Task 14)
 - **Testing:**
   - **Implemented:** Unit tests for `EncryptionService` and `FileSystemStorageBackend` covering core functionality, edge cases, and error handling.
+  - **Updated:** `lite-vault-cli.sh` script enhanced to test policy enforcement scenarios.
 
 ## Security Considerations
 
@@ -59,7 +64,7 @@ To provide a secure, centralized system for managing dynamic database credential
   - **Implemented:** The core `SealManager` controls the loading/unloading of the master key into memory. The vault starts sealed and blocks crypto operations.
   - **Initial Unseal:** Currently relies on providing the master key via the `mssm.master.b64` configuration property (e.g., environment variable) for automatic unseal on startup. **Securing this initial key value is critical.**
 - **Authentication:** API access (including the `/v1/kv/data/**` endpoints) is protected by static tokens when enabled (`mssm.auth.static-tokens.enabled=true`). Clients must provide a valid token in the `X-Vault-Token` header. These tokens are now linked to named policies defined in the configuration (`mssm.policies` and `mssm.auth.static-tokens.mappings`). (Task 11, Task 14)
-- **Authorization:** **Defined (Not Enforced):** The structure for defining policies (paths + capabilities) and linking them to tokens is in place (Task 14). However, the actual enforcement of these policies (checking if a token's policies grant access to a specific path/action) is **not yet implemented** (Task 15). Currently, any valid token grants access to all protected endpoints.
+- **Authorization:** **Implemented (F-CORE-120):** Basic Access Control List (ACL) enforcement is implemented via the `PolicyEnforcementFilter` (Task 15). After successful authentication, this filter checks if the policies associated with the token grant the required capability (e.g., READ, WRITE, DELETE) for the requested API path. If access is not explicitly granted by a policy rule, the request is denied with a 403 Forbidden status. Access is no longer granted simply by possessing *any* valid token; specific permissions are now required.
 - **Configuration Validation:** The application performs validation on required configuration properties at startup (e.g., master key, storage path, token mappings if enabled) and will fail to start if they are missing or invalid.
 
 ## Getting Started
@@ -73,5 +78,5 @@ To provide a secure, centralized system for managing dynamic database credential
 4.  **Configure Policies and Static Tokens (Needed for KV API):**
   *   Ensure `mssm.auth.static-tokens.enabled=true` in `application.yml` or `application-dev.yml`.
   *   Define desired access policies under the `mssm.policies:` section in your configuration file.
-  *   Define token-to-policy mappings under `mssm.auth.static-tokens.mappings:`. Example:
-        
+  *   Define token-to-policy mappings under `mssm.auth.static-tokens.mappings:`. These policies will now be enforced. Example:
+      
