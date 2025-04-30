@@ -1,6 +1,6 @@
 # Minimal Secure Secrets Manager (MSSM) - LiteVault
 
-**Version:** 0.2.0 (Unreleased changes in progress)
+**Version:** 0.3.0 
 
 A minimal implementation of a secure secrets manager inspired by HashiCorp Vault, focusing on core security primitives and essential features like dynamic secrets and key rotation. Built with Java 21 and Spring Boot.
 
@@ -10,7 +10,7 @@ To provide a secure, centralized system for managing dynamic database credential
 
 *(Keep Introduction, Scope, etc. if you have them)*
 
-## Current Status & Features (As of v0.2.0 + Unreleased)
+## Current Status & Features (As of v0.3.0)
 
 - **Project Setup:** Maven project initialized with Java 21 and Spring Boot. Basic directory structure and `.gitignore` in place.
 - **Dependencies:** Includes Spring Boot starters for Web, Validation, Security, JDBC, Test. Includes Lombok, BouncyCastle, Jackson Datatype JSR310, and PostgreSQL driver.

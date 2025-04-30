@@ -15,7 +15,7 @@
 
   <groupId>tech.yump</groupId>
   <artifactId>lite-vault</artifactId>
-  <version>0.2.0</version> <!-- Consider updating to 0.3.0-SNAPSHOT if working towards v0.3.0 -->
+  <version>0.3.0</version>
   <name>lite-vault</name>
   <description>Minimal Secure Secrets Manager (MSSM)</description>
 
