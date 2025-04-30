@@ -24,36 +24,38 @@ import java.util.Objects;
 public record MssmProperties(
 
         @Valid
-        @NotNull
+        @NotNull(message = "Master key configuration (mssm.master) is required.")
         MasterKeyProperties master,
 
         @Valid
-        @NotNull
+        @NotNull(message = "Storage configuration (mssm.storage) is required.")
         StorageProperties storage,
 
         @Valid
         AuthProperties auth,
 
-        @NotEmpty // Keep this for the top-level policies list
+        @NotEmpty(message = "At least one policy definition (mssm.policies) must be provided.")
         @Valid
         List<PolicyDefinition> policies,
 
         @Valid
         SecretsProperties secrets
 ) {
-    // MasterKeyProperties, StorageProperties remain unchanged
+    // --- MasterKeyProperties ---
     @Validated
     public record MasterKeyProperties(
             @NotBlank(message = "Master key (mssm.master.b64) must be provided.")
             String b64
     ) {}
 
+    // --- StorageProperties ---
     @Validated
     public record StorageProperties(
             @Valid
-            @NotNull
+            @NotNull(message = "Filesystem storage configuration (mssm.storage.filesystem) is required.")
             FileSystemProperties filesystem
     ) {
+        // --- FileSystemProperties ---
         @Validated
         public record FileSystemProperties(
                 @NotBlank(message = "Filesystem storage path (mssm.storage.filesystem.path) must be provided.")
@@ -98,9 +100,6 @@ public record MssmProperties(
 
             @AssertTrue(message = "Static token mappings (mssm.auth.static-tokens.mappings) cannot be empty when static token auth is enabled.")
             public boolean isMappingsValid() {
-                // If auth is NOT enabled, mappings can be anything (valid).
-                // If auth IS enabled, mappings must NOT be null AND must NOT be empty.
-                // (The constructor ensures mappings is not null, but check is harmless)
                 return !this.enabled() || (this.mappings() != null && !this.mappings().isEmpty());
             }
         }
@@ -114,6 +113,7 @@ public record MssmProperties(
 
     @Validated
     public record DbSecretsProperties(
+            @NotNull(message = "PostgreSQL secrets configuration (mssm.secrets.db.postgres) is required when 'mssm.secrets.db' is present.")
             @Valid
             PostgresProperties postgres
     ) {}
