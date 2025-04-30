@@ -77,7 +77,7 @@
 - **Rationale:**
   - Exposes dynamic credential generation via the API.
 
-#### 28. [ ] Integrate Audit Logging for DB Actions
+#### 28. [x] Integrate Audit Logging for DB Actions
 - **Description:**
   - Inject the `AuditBackend` (Task 16).
   - Log audit events for:

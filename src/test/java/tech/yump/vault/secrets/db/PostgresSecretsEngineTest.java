@@ -1,31 +1,3 @@
-# Task 29: Unit Tests for PostgreSQL Engine
-
-Okay, let's move on to Task 29: Write Unit Tests for PostgreSQL Engine. The goal is to test the logic within `PostgresSecretsEngine` in isolation, ensuring it behaves correctly based on its inputs and mocked dependencies, without needing a real PostgreSQL database.
-
-Here's a step-by-step guide:
-
-## Phase 3: Task 29 - Write Unit Tests for PostgreSQL Engine
-
-### 1. Create Test Class
-
-* Create a new test class: `src/test/java/tech/yump/vault/secrets/db/PostgresSecretsEngineTest.java`.
-* Annotate it with `@ExtendWith(MockitoExtension.class)` to enable Mockito integration with JUnit 5.
-
-### 2. Set Up Mocks and Test Instance
-
-* **Declare Mocks:** Use `@Mock` for all dependencies injected into `PostgresSecretsEngine`:
-    * `MssmProperties mockProperties`
-    * `DataSource mockDataSource` (Needed for `checkDbConnection`)
-    * `JdbcTemplate mockJdbcTemplate`
-    * `AuditBackend mockAuditBackend`
-* **Declare Instance Under Test:** Use `@InjectMocks` to create an instance of `PostgresSecretsEngine` and inject the mocks into it:
-    * `PostgresSecretsEngine postgresSecretsEngine`
-* **Argument Captors:** Use `@Captor` for capturing arguments passed to mocks, especially for SQL strings and AuditEvents:
-    * `ArgumentCaptor<String> sqlCaptor`
-    * `ArgumentCaptor<AuditEvent> auditEventCaptor`
-
-```java
-// src/test/java/tech/yump/vault/secrets/db/PostgresSecretsEngineTest.java
 package tech.yump.vault.secrets.db;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -37,8 +9,8 @@ import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.dao.DataAccessException; // Import common exception
-import org.springframework.jdbc.CannotGetJdbcConnectionException; // Example specific exception
+import org.springframework.dao.DataAccessException;
+import org.springframework.jdbc.CannotGetJdbcConnectionException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import tech.yump.vault.audit.AuditBackend;
 import tech.yump.vault.audit.AuditEvent;
@@ -59,9 +31,20 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode; // Added for simplified verification
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class PostgresSecretsEngineTest {
@@ -69,7 +52,7 @@ class PostgresSecretsEngineTest {
     @Mock
     private MssmProperties mockProperties;
     @Mock
-    private DataSource mockDataSource; // Needed for @PostConstruct check
+    private DataSource mockDataSource;
     @Mock
     private JdbcTemplate mockJdbcTemplate;
     @Mock
@@ -101,38 +84,36 @@ class PostgresSecretsEngineTest {
     );
 
     private MssmProperties.PostgresRoleDefinition testRoleDefinition;
-    private MssmProperties.PostgresProperties postgresProperties;
-    private MssmProperties.DbSecretsProperties dbSecretsProperties;
-    private MssmProperties.SecretsProperties secretsProperties;
+
+    @Mock
+    private MssmProperties.SecretsProperties mockSecretsProperties;
+    @Mock
+    private MssmProperties.DbSecretsProperties mockDbSecretsProperties;
+    @Mock
+    private MssmProperties.PostgresProperties mockPostgresProperties;
+
 
     @BeforeEach
     void setUp() {
-        // Reset mocks if needed (often good practice)
-        // Mockito.reset(mockProperties, mockDataSource, mockJdbcTemplate, mockAuditBackend, mockConnection, mockMetaData);
-
         // Set up the nested properties structure for mocking
         testRoleDefinition = new MssmProperties.PostgresRoleDefinition(
                 TEST_CREATION_SQL,
                 TEST_REVOCATION_SQL,
                 TEST_TTL
         );
-        postgresProperties = new MssmProperties.PostgresProperties(
-                "jdbc:postgresql://host:5432/db",
-                "user",
-                "pass",
-                Map.of(TEST_ROLE_NAME, testRoleDefinition)
-        );
-        dbSecretsProperties = new MssmProperties.DbSecretsProperties(postgresProperties);
-        secretsProperties = new MssmProperties.SecretsProperties(dbSecretsProperties);
 
-        // --- Mock the property retrieval ---
-        // Use lenient() if the same mock setup is used across tests where it might not always be called
-        lenient().when(mockProperties.secrets()).thenReturn(secretsProperties);
-        // No need to mock deeper levels unless directly accessed,
-        // but it's clearer to mock the chain if needed:
-        // lenient().when(mockProperties.secrets().db()).thenReturn(dbSecretsProperties);
-        // lenient().when(mockProperties.secrets().db().postgres()).thenReturn(postgresProperties);
-        // lenient().when(mockProperties.secrets().db().postgres().roles()).thenReturn(Map.of(TEST_ROLE_NAME, testRoleDefinition));
+        lenient().when(mockProperties.secrets()).thenReturn(mockSecretsProperties);
+        lenient().when(mockSecretsProperties.db()).thenReturn(mockDbSecretsProperties);
+        lenient().when(mockDbSecretsProperties.postgres()).thenReturn(mockPostgresProperties);
+
+        // Mock the final roles() call on the last mock in the chain
+        lenient().when(mockPostgresProperties.roles()).thenReturn(Map.of(TEST_ROLE_NAME, testRoleDefinition));
+
+        // ALSO: Mock other methods on mockPostgresProperties if your code needs them
+        // (Based on the original postgresProperties instantiation)
+        lenient().when(mockPostgresProperties.connectionUrl()).thenReturn("jdbc:postgresql://host:5432/db");
+        lenient().when(mockPostgresProperties.username()).thenReturn("user");
+        lenient().when(mockPostgresProperties.password()).thenReturn("pass");
     }
 
     // --- Tests for checkDbConnection (@PostConstruct) ---
@@ -148,7 +129,7 @@ class PostgresSecretsEngineTest {
         when(mockMetaData.getUserName()).thenReturn("mockUser");
 
         // Act
-        postgresSecretsEngine.checkDbConnection(); // Call directly to test
+        postgresSecretsEngine.checkDbConnection(); // Call directly to test @PostConstruct logic
 
         // Assert
         verify(mockDataSource).getConnection();
@@ -163,6 +144,10 @@ class PostgresSecretsEngineTest {
         // Arrange
         when(mockDataSource.getConnection()).thenReturn(mockConnection);
         when(mockConnection.isValid(anyInt())).thenReturn(false);
+        // Mock metadata retrieval even on failure path if it's called before isValid check fails
+        lenient().when(mockConnection.getMetaData()).thenReturn(mockMetaData);
+        lenient().when(mockMetaData.getURL()).thenReturn("jdbc:mock-invalid");
+        lenient().when(mockMetaData.getUserName()).thenReturn("mockUser-invalid");
 
         // Act
         postgresSecretsEngine.checkDbConnection();
@@ -196,8 +181,7 @@ class PostgresSecretsEngineTest {
     @Test
     @DisplayName("generateCredentials: Should generate lease, execute SQL, log audit, and store lease on success")
     void generateCredentials_Success() {
-        // Arrange
-        // Properties mock already set up in @BeforeEach
+        // Arrange (Properties mock already set up in @BeforeEach)
 
         // Act
         Lease resultLease = postgresSecretsEngine.generateCredentials(TEST_ROLE_NAME);
@@ -212,7 +196,7 @@ class PostgresSecretsEngineTest {
         String generatedUsername = (String) resultLease.secretData().get("username");
         String generatedPassword = (String) resultLease.secretData().get("password");
         assertThat(generatedUsername).startsWith("lv-test-role-"); // Verify username format
-        assertThat(generatedPassword).hasSize(32); // Verify password length
+        assertThat(generatedPassword).hasSize(32); // Verify password length (default)
 
         // Verify SQL execution
         verify(mockJdbcTemplate, times(TEST_CREATION_SQL.size())).execute(sqlCaptor.capture());
@@ -231,9 +215,9 @@ class PostgresSecretsEngineTest {
         assertThat(auditEvent.outcome()).isEqualTo("success");
         assertThat(auditEvent.data()).containsEntry("lease_id", resultLease.id().toString());
         assertThat(auditEvent.data()).containsEntry("role_name", TEST_ROLE_NAME);
+        assertThat(auditEvent.data()).doesNotContainKey("password"); // Ensure password not logged
 
-        // Verify Lease stored (indirectly, by trying to retrieve it for revoke test later, or check map size if needed)
-        // For simplicity, we can assume storage if revoke works later.
+        // Verify Lease stored (indirectly by checking revokeLease behavior later)
     }
 
     @Test
@@ -241,7 +225,9 @@ class PostgresSecretsEngineTest {
     void generateCredentials_RoleNotFound() {
         // Arrange
         String unknownRole = "unknown-role";
-        // Properties mock returns null for this role implicitly due to setup
+        // Explicitly mock roles() to return the map without the unknown role for clarity
+        // (This overrides the lenient mock from setUp for this specific test)
+        when(mockProperties.secrets().db().postgres().roles()).thenReturn(Map.of(TEST_ROLE_NAME, testRoleDefinition));
 
         // Act & Assert
         assertThatThrownBy(() -> postgresSecretsEngine.generateCredentials(unknownRole))
@@ -271,7 +257,7 @@ class PostgresSecretsEngineTest {
         verify(mockJdbcTemplate, atLeastOnce()).execute(sqlCaptor.capture());
         // Verify no audit log for successful lease creation
         verifyNoInteractions(mockAuditBackend);
-        // Verify lease was NOT stored (difficult to check map directly without exposing it, rely on revoke tests)
+        // Verify lease was NOT stored (difficult to check map directly, rely on revoke tests)
     }
 
     // --- Tests for revokeLease ---
@@ -283,7 +269,7 @@ class PostgresSecretsEngineTest {
         Lease leaseToRevoke = postgresSecretsEngine.generateCredentials(TEST_ROLE_NAME);
         UUID leaseId = leaseToRevoke.id();
         String username = (String) leaseToRevoke.secretData().get("username");
-        // Clear interactions from the generateCredentials call
+        // Clear interactions from the generateCredentials call for clean verification
         clearInvocations(mockJdbcTemplate, mockAuditBackend);
 
         // Act
@@ -326,7 +312,7 @@ class PostgresSecretsEngineTest {
         verifyNoInteractions(mockAuditBackend);
     }
 
-     @Test
+    @Test
     @DisplayName("revokeLease: Should throw SecretsEngineException if role definition missing during revoke")
     void revokeLease_RoleDefinitionMissing() {
         // Arrange: Generate a lease first
@@ -335,28 +321,32 @@ class PostgresSecretsEngineTest {
         clearInvocations(mockJdbcTemplate, mockAuditBackend);
 
         // Arrange: Mock properties to return no roles during the revoke call
+        // This overrides the lenient mock from setUp for this specific interaction
         when(mockProperties.secrets().db().postgres().roles()).thenReturn(Collections.emptyMap());
 
-        // Act & Assert
+        // Act & Assert: Verify the initial failure due to missing role
         assertThatThrownBy(() -> postgresSecretsEngine.revokeLease(leaseId))
                 .isInstanceOf(SecretsEngineException.class)
                 .hasMessageContaining("Role definition '" + TEST_ROLE_NAME + "' not found");
 
-        // Verify no DB interaction or audit logging occurred
+        // Verify no DB interaction or audit logging occurred during the failed attempt
         verifyNoInteractions(mockJdbcTemplate);
         verifyNoInteractions(mockAuditBackend);
 
-        // Verify Lease NOT removed (by trying to revoke again *after restoring mock*)
-        when(mockProperties.secrets().db().postgres().roles()).thenReturn(Map.of(TEST_ROLE_NAME, testRoleDefinition)); // Restore mock
-        // This revoke should now succeed or fail differently, proving the lease wasn't removed before
-         try {
-             postgresSecretsEngine.revokeLease(leaseId);
-         } catch(Exception e) {
-             // Ignore exception here, just verifying it wasn't LeaseNotFoundException initially
-         }
-         // Now try revoking again, *should* be LeaseNotFoundException
-         assertThatThrownBy(() -> postgresSecretsEngine.revokeLease(leaseId))
-                 .isInstanceOf(LeaseNotFoundException.class);
+        // --- Simplified Verification: Lease NOT removed by the failed attempt ---
+        // 1. Restore the mock for the roles map to its original state from setUp
+        when(mockProperties.secrets().db().postgres().roles()).thenReturn(Map.of(TEST_ROLE_NAME, testRoleDefinition));
+
+        // 2. Attempt to revoke again. This should NOT throw LeaseNotFoundException,
+        //    proving the lease still existed after the first failed attempt.
+        //    It should now succeed (assuming no other mocks interfere).
+        assertThatCode(() -> postgresSecretsEngine.revokeLease(leaseId))
+                .doesNotThrowAnyException();
+
+        // 3. Verify the lease IS removed now by calling revoke a final time.
+        //    This call MUST throw LeaseNotFoundException.
+        assertThatThrownBy(() -> postgresSecretsEngine.revokeLease(leaseId))
+                .isInstanceOf(LeaseNotFoundException.class);
     }
 
 
@@ -371,7 +361,8 @@ class PostgresSecretsEngineTest {
 
         // Arrange: Mock DB error during revocation
         DataAccessException dbException = new CannotGetJdbcConnectionException("Test Revocation DB Error");
-        doThrow(dbException).when(mockJdbcTemplate).execute(contains("REVOKE")); // Throw on first revoke statement
+        // Mock the first revocation statement to throw the exception
+        doThrow(dbException).when(mockJdbcTemplate).execute(contains("REVOKE"));
 
         // Act & Assert
         assertThatThrownBy(() -> postgresSecretsEngine.revokeLease(leaseId))
@@ -379,7 +370,7 @@ class PostgresSecretsEngineTest {
                 .hasMessageContaining("Failed to execute credential revocation SQL")
                 .hasCause(dbException);
 
-        // Verify SQL was attempted
+        // Verify SQL was attempted (at least the first statement)
         verify(mockJdbcTemplate, atLeastOnce()).execute(sqlCaptor.capture());
         assertThat(sqlCaptor.getValue()).contains(username); // Verify it tried the correct SQL
 
@@ -392,116 +383,10 @@ class PostgresSecretsEngineTest {
         assertThat(auditEvent.data()).containsEntry("lease_id", leaseId.toString());
         assertThat(auditEvent.data()).containsEntry("error", dbException.getMessage());
 
-        // Verify Lease NOT removed (by trying to revoke again *after removing DB error mock*)
-        // Resetting the specific mock behavior:
-        // Need to use Mockito.reset or re-setup mocks if using strict stubbing.
-        // A simpler way for this test is to just verify it wasn't LeaseNotFoundException above,
-        // and then try to revoke again *without* resetting the mock (it should throw the DB error again).
+        // Verify Lease NOT removed: Attempt to revoke again, it should fail the same way
+        // because the lease still exists and the DB error mock is still active.
         assertThatThrownBy(() -> postgresSecretsEngine.revokeLease(leaseId))
                 .isInstanceOf(SecretsEngineException.class) // Should still throw DB error
-                .hasCause(dbException);
+                .hasCause(dbException); // Verify it's the same underlying cause
     }
 }
-```
-
-### 3. Write Test Cases
-
-* **`checkDbConnection` Tests:**
-  * Test the `@PostConstruct` method directly.
-  * Mock `DataSource.getConnection()`, `Connection.isValid()`, `Connection.getMetaData()`, etc.
-  * Verify success path (logs info, doesn't throw).
-  * Verify failure paths (`isValid` returns false, `getConnection` throws `SQLException`) - check logs if possible/needed, ensure no unexpected exceptions.
-* **`generateCredentials` Tests:**
-  * **Success:**
-    * Mock `mockProperties.secrets().db().postgres().roles().get(TEST_ROLE_NAME)` to return `testRoleDefinition`.
-    * Call `generateCredentials(TEST_ROLE_NAME)`.
-    * Assert the returned `Lease` is not null and has expected `roleName`, `ttl`.
-    * Assert `secretData` contains non-blank `username` and `password`.
-    * Verify `mockJdbcTemplate.execute()` was called the correct number of times (size of `creationStatements`).
-    * Use `sqlCaptor.capture()` and `sqlCaptor.getAllValues()` to verify the executed SQL strings had `{{username}}` and `{{password}}` replaced correctly.
-    * Verify `mockAuditBackend.logEvent()` was called once with `auditEventCaptor`.
-    * Assert the captured `AuditEvent` has `type="db_operation"`, `action="lease_creation"`, `outcome="success"`, and includes `lease_id` and `role_name` in its data.
-    * Verify the lease is added to the internal `activeLeases` map (e.g., by checking its presence in a subsequent `revokeLease` test).
-  * **Role Not Found:**
-    * Mock properties to return null or an empty map for the requested role.
-    * Use `assertThatThrownBy` to assert that `RoleNotFoundException` is thrown.
-    * Use `verifyNoInteractions(mockJdbcTemplate, mockAuditBackend)` to ensure no DB or audit calls were made.
-  * **DB Error:**
-    * Mock properties to return a valid role definition.
-    * Mock `mockJdbcTemplate.execute(anyString())` to throw a `DataAccessException` (e.g., `CannotGetJdbcConnectionException`).
-    * Use `assertThatThrownBy` to assert that `SecretsEngineException` is thrown, wrapping the `DataAccessException`.
-    * Verify `mockJdbcTemplate.execute()` was called (at least once).
-    * Verify `mockAuditBackend` was not called for `lease_creation`.
-* **`revokeLease` Tests:**
-  * **Success:**
-    * **Arrange:** Call `generateCredentials` first to get a valid `Lease` and populate `activeLeases`. Clear mock interactions (`clearInvocations`).
-    * Mock properties to return the correct role definition for the lease's role name.
-    * **Act:** Call `revokeLease` with the generated lease ID.
-    * **Assert:** Verify `mockJdbcTemplate.execute()` was called for each `revocationStatement`.
-    * Use `sqlCaptor` to verify the executed SQL had `{{username}}` replaced.
-    * Verify `mockAuditBackend.logEvent()` was called for `revoke_lease` success, including `lease_id`.
-    * Verify the lease is removed from `activeLeases` (e.g., assert `LeaseNotFoundException` if `revokeLease` is called again with the same ID).
-  * **Lease Not Found:**
-    * Use `assertThatThrownBy` to assert `LeaseNotFoundException` when calling `revokeLease` with a random UUID.
-    * Verify no DB or audit interactions.
-  * **Role Definition Missing during Revoke:**
-    * **Arrange:** Generate a lease. Clear mocks. Mock properties to return null or empty map for the role during the revoke call.
-    * **Act & Assert:** Use `assertThatThrownBy` for `SecretsEngineException` (mentioning role definition not found).
-    * Verify no DB or audit interactions.
-    * Verify lease was not removed (e.g., restore the role mock and try revoking again – it shouldn't throw `LeaseNotFoundException` immediately).
-  * **DB Error:**
-    * **Arrange:** Generate a lease. Clear mocks. Mock properties for the role. Mock `mockJdbcTemplate.execute()` to throw `DataAccessException` during the revoke call.
-    * **Act & Assert:** Use `assertThatThrownBy` for `SecretsEngineException` wrapping the DB exception.
-    * Verify `mockJdbcTemplate.execute()` was called.
-    * Verify `mockAuditBackend.logEvent()` was called for `revoke_lease` failure, including `lease_id` and the error message.
-    * Verify lease was not removed.
-
-### 4. Refine Assertions
-
-* Use AssertJ (`assertThat`) for clear and readable assertions.
-* Be specific about exception messages and causes where relevant.
-* When checking captured SQL, ensure placeholders are gone and generated values are present.
-* When checking captured `AuditEvent`, verify the key fields (`type`, `action`, `outcome`) and relevant data entries (`lease_id`, `role_name`, `error`). Do not assert on the generated password in the audit event data (it shouldn't be there).
-
-### 5. Run Tests
-
-* Execute the tests using your IDE or Maven (`mvn test`). Ensure they pass.
-
-### 6. Update Task Status
-
-* Mark Task 29 as complete in `mssm-atomic-tasks-v0-3-0.md`.
-
----
-
-## `mssm-atomic-tasks-v0-3-0.md` Excerpt
-
-# /Users/robertocastro/dev/lite-vault/project/mssm-atomic-tasks-v0-3-0.md
-
-[...]
-
-#### 28. [x] Integrate Audit Logging for DB Actions
-- **Description:**
-  - Inject the `AuditBackend` (Task 16).
-  - Log audit events for:
-    - Credential generation requests (success/failure, requested role, authenticated user).
-    - Lease creation (lease ID, associated role).
-    - Lease revocation attempts (success/failure, lease ID).
-  - Ensure generated passwords are *not* logged.
-- **Rationale:**
-  - Provides audit trail for dynamic secret generation and revocation (F-CORE-130).
-
-#### 29. [x] Write Unit Tests for PostgreSQL Engine
-- **Description:**
-  - Write unit tests for `PostgresSecretsEngine`.
-  - Mock database interactions (JDBC calls) to test SQL template rendering and parameter substitution logic.
-  - Test lease object creation, storage, retrieval, and removal.
-  - Test credential generation and revocation logic, including error handling.
-- **Rationale:**
-  - Verifies the engine's internal logic without requiring a live database.
-
-#### 30. [ ] Write Integration Tests for DB Credential API
-[...]
-```
-
-This comprehensive set of unit tests will give you confidence that the internal logic of your `PostgresSecretsEngine` is working correctly, independent of the actual database.
-```
