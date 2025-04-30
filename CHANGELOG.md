@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Integration Tests for KV API (Task 20):**
+  - Added `@SpringBootTest` integration tests (`KVControllerIntegrationTest.java`) using `MockMvc` to validate the KV API endpoints (`/v1/kv/data/**`).
+  - Tests cover authentication (valid/invalid/no token), authorization (policy enforcement based on capabilities and paths from `application-dev.yml`), successful CRUD operations, and behavior when the vault is sealed (503 response).
+  - Includes setup/teardown logic for unsealing and cleaning the test storage directory.
 - **Integrate Audit Logging into API Flow (Task 17):**
   - Injected `AuditBackend` into `StaticTokenAuthFilter`, `PolicyEnforcementFilter`, and `KVController`.
   - Audit events are now logged (as JSON via `LogAuditBackend`) for:

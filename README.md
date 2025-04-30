@@ -13,7 +13,7 @@ To provide a secure, centralized system for managing dynamic database credential
 ## Current Status & Features (In Progress)
 
 - **Project Setup:** Maven project initialized with Java 21 and Spring Boot. Basic directory structure and `.gitignore` in place.
-- **Dependencies:** Includes Spring Boot starters for Web, Validation, Security. Includes Lombok and BouncyCastle.
+- **Dependencies:** Includes Spring Boot starters for Web, Validation, Security, Test. Includes Lombok, BouncyCastle, and Jackson Datatype JSR310.
 - **Core Encryption:**
   - **Implemented:** Foundational cryptographic layer using **AES-256-GCM** (`EncryptionService.java`). Provides authenticated encryption for data at rest.
   - **Note:** Now retrieves the master key from `SealManager`; cryptographic operations are blocked if the vault is sealed.
@@ -57,6 +57,7 @@ To provide a secure, centralized system for managing dynamic database credential
 - **Testing:**
   - **Implemented:** Unit tests for `EncryptionService` and `FileSystemStorageBackend` covering core functionality, edge cases, and error handling.
   - **Implemented:** Unit tests for `StaticTokenAuthFilter` and `PolicyEnforcementFilter` verifying authentication logic and basic ACL enforcement decisions. (Task 19)
+  - **Implemented:** Integration tests (`KVControllerIntegrationTest.java`) using `@SpringBootTest` and `MockMvc` to verify the end-to-end functionality of the KV API (`/v1/kv/data/**`). These tests validate authentication, authorization (policy enforcement), CRUD operations, and behavior when the vault is sealed, ensuring components work together correctly. (Task 20)
   - **Fixed:** Resolved failures in `PolicyEnforcementFilterTest` related to Mockito stubbing and assertions.
   - **Updated:** `lite-vault-cli.sh` script enhanced to test policy enforcement scenarios.
 
@@ -72,6 +73,7 @@ To provide a secure, centralized system for managing dynamic database credential
 - **Authorization:** **Implemented (F-CORE-120):** Basic Access Control List (ACL) enforcement is implemented via the `PolicyEnforcementFilter` (Task 15). After successful authentication, this filter checks if the policies associated with the token grant the required capability (e.g., READ, WRITE, DELETE) for the requested API path. Path matching logic, including wildcards (`/*`), is now correctly implemented, ensuring policies work as intended. If access is not explicitly granted by a policy rule, the request is denied with a 403 Forbidden status.
 - **Auditing:** **Implemented (F-CORE-130):** Audit events are now logged for authentication attempts, authorization decisions, and KV operations via the `LogAuditBackend` (Task 16, Task 17). Events are structured JSON including timestamp, principal, source IP, request details, outcome, and relevant metadata. Sensitive data (e.g., secret values) is excluded.
 - **Configuration Validation:** The application performs validation on required configuration properties at startup (e.g., master key, storage path, token mappings if enabled) and will fail to start if they are missing or invalid.
+- **Testing:** Unit tests cover core components like encryption, storage, authentication, and authorization logic. Integration tests (Task 20) validate the KV API end-to-end, ensuring authentication, authorization, and the secrets engine work together correctly.
 
 ## Getting Started
 

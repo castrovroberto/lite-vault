@@ -41,7 +41,7 @@
 - **Rationale:**
     - Exposes the KV secrets engine functionality via the API (F-STATIC-410/420).
 
-#### 14. [ ] Define Basic Policy/ACL Structure
+#### 14. [x] Define Basic Policy/ACL Structure
 - **Description:**
     - Define simple data structures (e.g., Java records or classes) for representing policies.
     - Example Policy: `{ path: "kv/data/myapp/*", capabilities: ["read", "write"] }`
@@ -50,7 +50,7 @@
     - Lays the groundwork for authorization (F-CORE-120).
     - Allows defining access rules separate from authentication tokens.
 
-#### 15. [ ] Implement Basic ACL Enforcement
+#### 15. [x] Implement Basic ACL Enforcement
 - **Description:**
     - Enhance the authentication filter/interceptor (or add a dedicated authorization interceptor).
     - After successful authentication (Task 11), retrieve the policies associated with the token (Task 14).
@@ -61,7 +61,7 @@
     - Enforces configured access controls on API endpoints (F-CORE-120).
     - Implements the principle of least privilege (NFR-SEC-130).
 
-#### 16. [ ] Implement Basic Audit Logging Backend
+#### 16. [x] Implement Basic Audit Logging Backend
 - **Description:**
     - Define an `AuditBackend` interface (e.g., `logEvent(AuditEvent event)`).
     - Implement a simple `LogAuditBackend` that formats an `AuditEvent` object (containing timestamp, auth info, request details, response status, etc.) and writes it to SLF4j logs at INFO level.
@@ -69,7 +69,7 @@
     - Creates the mechanism for recording security-relevant events (F-CORE-130).
     - Starts with a simple, file-based audit trail via standard logging.
 
-#### 17. [ ] Integrate Audit Logging into API Flow
+#### 17. [x] Integrate Audit Logging into API Flow
 - **Description:**
     - Inject the `AuditBackend` into relevant components (e.g., auth filter, ACL interceptor, API controllers).
     - Log audit events for:
@@ -80,7 +80,7 @@
 - **Rationale:**
     - Provides visibility into who accessed what, when, and whether it was allowed (F-CORE-130).
 
-#### 18. [ ] Configure Static Tokens and Policies via Properties
+#### 18. [x] Configure Static Tokens and Policies via Properties
 - **Description:**
     - Update `MssmProperties` to include structures for `mssm.auth.static_tokens` and `mssm.policies`.
     - Add validation (`@Validated`, `@NotEmpty`, `@Valid`) to ensure tokens and policies are configured correctly.
@@ -88,14 +88,14 @@
 - **Rationale:**
     - Makes the authentication and authorization mechanisms configurable.
 
-#### 19. [ ] Write Unit Tests for Auth & ACLs
+#### 19. [x] Write Unit Tests for Auth & ACLs
 - **Description:**
     - Write unit tests for the authentication filter/interceptor logic using Mockito to simulate requests with/without/invalid tokens.
     - Write unit tests for the ACL enforcement logic, providing mock policies and requests to verify access grant/deny decisions.
 - **Rationale:**
     - Ensures the core security mechanisms function correctly in isolation.
 
-#### 20. [ ] Write Integration Tests for KV API
+#### 20. [x] Write Integration Tests for KV API
 - **Description:**
     - Write Spring Boot integration tests (`@SpringBootTest`) that start the application context.
     - Use `TestRestTemplate` or `MockMvc` to send requests to the KV API endpoints (`/v1/kv/data/...`).
