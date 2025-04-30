@@ -1,8 +1,16 @@
 # Task 30: Integration Tests for DB Credential API
 
-Okay, let's tackle the final task for v0.3.0: Task 30 - Write Integration Tests for DB Credential API.This involves testing the GET /v1/db/creds/{role_name} endpoint end-to-end, including authentication, authorization, interaction with the PostgresSecretsEngine, and verifying effects on a real (but temporary) PostgreSQL database using Testcontainers.Here's a step-by-step guide:Phase 3: Task 30 - Write Integration Tests for DB Credential API1. Add Test Dependencies:•Ensure you have the necessary Testcontainers dependencies in your pom.xml.
+Okay, let's tackle the final task for v0.3.0: **Task 30 - Write Integration Tests for DB Credential API**. This involves testing the `GET /v1/db/creds/{role_name}` endpoint end-to-end, including authentication, authorization, interaction with the `PostgresSecretsEngine`, and verifying effects on a real (but temporary) PostgreSQL database using Testcontainers.
 
-<!-- pom.xml -->
+Here's a step-by-step guide:
+
+## Phase 3: Task 30 - Write Integration Tests for DB Credential API
+
+### 1. Add Test Dependencies
+
+Ensure you have the necessary Testcontainers dependencies in your `pom.xml`.
+
+```xml
 <dependency>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-test</artifactId>
@@ -13,7 +21,6 @@ Okay, let's tackle the final task for v0.3.0: Task 30 - Write Integration Tests 
     <artifactId>spring-security-test</artifactId>
     <scope>test</scope>
 </dependency>
-<!-- Testcontainers -->
 <dependency>
     <groupId>org.testcontainers</groupId>
     <artifactId>junit-jupiter</artifactId>
@@ -24,20 +31,22 @@ Okay, let's tackle the final task for v0.3.0: Task 30 - Write Integration Tests 
     <artifactId>postgresql</artifactId>
     <scope>test</scope>
 </dependency>
-<!-- Ensure you have JDBC driver for tests too -->
 <dependency>
     <groupId>org.postgresql</groupId>
     <artifactId>postgresql</artifactId>
-    <scope>runtime</scope> <!-- Or test, if only needed for tests -->
-</dependency>
+    <scope>runtime</scope> </dependency>
 <dependency>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-jdbc</artifactId>
-    <!-- Scope might be default (compile) or test depending on usage -->
-</dependency>
+    </dependency>
+```
+(Make sure versions are managed, possibly via `spring-boot-dependencies` or a `testcontainers.version` property).
 
-(Make sure versions are managed, possibly via spring-boot-dependencies or a testcontainers.version property).2. Create Test Configuration (application-test.yml):•Create a new configuration file: src/test/resources/application-test.yml.•This file will override properties for the test environment, especially database connection details, and define specific tokens/policies for testing.
+### 2. Create Test Configuration (application-test.yml)
 
+Create a new configuration file: `src/test/resources/application-test.yml`. This file will override properties for the test environment, especially database connection details, and define specific tokens/policies for testing.
+
+```yaml
 # src/test/resources/application-test.yml
 server:
   ssl:
@@ -140,9 +149,13 @@ spring:
     hikari:
       pool-name: TestPostgresPool
       maximum-pool-size: 5 # Smaller pool for tests
+```
 
-3. Create Integration Test Class:•Create src/test/java/tech/yump/vault/api/DbControllerIntegrationTest.java.•Set up Testcontainers for PostgreSQL.•Use @DynamicPropertySource to inject the dynamic container JDBC URL, username, and password into the Spring context before the DataSource and PostgresSecretsEngine beans are created.
+### 3. Create Integration Test Class
 
+Create `src/test/java/tech/yump/vault/api/DbControllerIntegrationTest.java`. Set up Testcontainers for PostgreSQL. Use `@DynamicPropertySource` to inject the dynamic container JDBC URL, username, and password into the Spring context before the `DataSource` and `PostgresSecretsEngine` beans are created.
+
+```java
 // src/test/java/tech/yump/vault/api/DbControllerIntegrationTest.java
 package tech.yump.vault.api;
 
@@ -492,43 +505,47 @@ class DbControllerIntegrationTest {
     }
 
 }
+```
 
-4. Add Temporary Revocation Endpoint (for Testing):•Since Task 26 implemented revokeLease in the engine but Task 27 didn't expose it via API, add a temporary endpoint in DbController solely for testing purposes. Add clear comments indicating its temporary nature.
+### 4. Add Temporary Revocation Endpoint (for Testing)
 
+Since Task 26 implemented `revokeLease` in the engine but Task 27 didn't expose it via API, add a temporary endpoint in `DbController` solely for testing purposes. Add clear comments indicating its temporary nature.
+
+```java
 // src/main/java/tech/yump/vault/api/DbController.java
 package tech.yump.vault.api;
 
-+import jakarta.servlet.http.HttpServletRequest; // Added
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
-+import org.springframework.security.core.Authentication; // Added
-+import org.springframework.security.core.GrantedAuthority; // Added
-+import org.springframework.security.core.context.SecurityContextHolder; // Added
-+import org.springframework.web.bind.annotation.DeleteMapping; // Added
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import tech.yump.vault.api.dto.DbCredentialsResponse;
-+import tech.yump.vault.audit.AuditBackend; // Added
-+import tech.yump.vault.audit.AuditEvent; // Added
-+import tech.yump.vault.auth.StaticTokenAuthFilter; // Added for REQUEST_ID_ATTR
+import tech.yump.vault.audit.AuditBackend;
+import tech.yump.vault.audit.AuditEvent;
+import tech.yump.vault.auth.StaticTokenAuthFilter;
 import tech.yump.vault.core.VaultSealedException;
 import tech.yump.vault.secrets.Lease;
-+import tech.yump.vault.secrets.LeaseNotFoundException; // Added
+import tech.yump.vault.secrets.LeaseNotFoundException;
 import tech.yump.vault.secrets.RoleNotFoundException;
 import tech.yump.vault.secrets.SecretsEngineException;
-import tech.yump.vault.secrets.db.PostgresSecretsEngine; // Import the engine
+import tech.yump.vault.secrets.db.PostgresSecretsEngine;
 
-+import java.time.Instant; // Added
+import java.time.Instant;
 import java.util.Map;
-+import java.util.List; // Added
-+import java.util.Optional; // Added
-+import java.util.UUID; // Added
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/v1/db") // Base path for database secrets endpoints
@@ -537,158 +554,282 @@ import java.util.Map;
 public class DbController {
 
     private final PostgresSecretsEngine postgresSecretsEngine;
-+   private final AuditBackend auditBackend; // Added
-+   private final HttpServletRequest request; // Added
+    private final AuditBackend auditBackend;
+    private final HttpServletRequest request;
 
     /**
      * Generates dynamic credentials for a specified PostgreSQL role.
-@@ -110,6 +113,41 @@
-         }
-     }
+     */
+    @GetMapping("/creds/{roleName}")
+    public ResponseEntity<DbCredentialsResponse> generateDbCredentials(@PathVariable String roleName) {
+        log.info("Received request for DB credentials for role: {}", roleName);
+        try {
+            // Get authenticated principal from SecurityContext
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            String authenticatedPrincipal = authentication.getName(); // Or get a more specific ID
 
-+   // --- START: Temporary Revocation Endpoint for Testing (Task 30) ---
-+   // TODO: Remove or replace this endpoint with a proper lease management API later.
-+   /**
-+    * TEMPORARY endpoint for testing lease revocation.
-+    * Requires authentication and authorization (e.g., DELETE capability on db/leases/{leaseId}).
-+    *
-+    * @param leaseId The UUID of the lease to revoke.
-+    * @return ResponseEntity indicating success (204 No Content) or failure.
-+    */
-+   @DeleteMapping("/leases/{leaseId}")
-+   public ResponseEntity<Void> revokeDbLease(@PathVariable UUID leaseId) {
-+       log.info("Received request to revoke DB lease: {}", leaseId);
-+       try {
-+           postgresSecretsEngine.revokeLease(leaseId);
-+           log.info("Successfully revoked DB lease: {}", leaseId);
-+
-+           // --- Audit Log for Success ---
-+           logAuditEvent( // Use the same helper as generate
-+                   "db_operation",
-+                   "revoke_lease", // Different action
-+                   "success",
-+                   HttpStatus.NO_CONTENT.value(),
-+                   null, // No error message
-+                   null, // No role name directly associated with revoke request path
-+                   leaseId // Include lease ID
-+           );
-+           return ResponseEntity.noContent().build();
-+       } catch (LeaseNotFoundException e) {
-+           log.warn("Lease revocation failed: Lease '{}' not found.", leaseId);
-+           throw e; // Let handler deal with it
-+       } catch (SecretsEngineException e) {
-+           log.error("Lease revocation failed for lease '{}': {}", leaseId, e.getMessage(), e);
-+           throw e; // Let handler deal with it
-+       }
-+   }
-+   // --- END: Temporary Revocation Endpoint ---
+            // Get request ID from attribute set by filter
+            String requestId = (String) request.getAttribute(StaticTokenAuthFilter.REQUEST_ID_ATTR);
+
+            log.debug("Generating credentials for role '{}' by principal '{}' with request ID '{}'",
+                    roleName, authenticatedPrincipal, requestId);
+
+            Lease lease = postgresSecretsEngine.generateCredentials(roleName);
+
+            log.info("Successfully generated credentials for role '{}', lease ID: {}", roleName, lease.id());
+
+            // --- Audit Log for Success ---
+            logAuditEvent(
+                    "db_operation",
+                    "generate_credentials",
+                    "success",
+                    HttpStatus.OK.value(),
+                    null, // No error message on success
+                    roleName,
+                    lease.id()
+            );
+
+            DbCredentialsResponse response = new DbCredentialsResponse(
+                    lease.id(),
+                    (String) lease.secretData().get("username"),
+                    (String) lease.secretData().get("password"),
+                    lease.ttl().getSeconds()
+            );
+
+            return ResponseEntity.ok(response);
+
+        } catch (RoleNotFoundException e) {
+            log.warn("Credential generation failed: Role '{}' not found.", roleName);
+            // Audit logging handled by exception handler
+            throw e;
+        } catch (VaultSealedException e) {
+            log.error("Credential generation failed: Vault is sealed.");
+            // Audit logging handled by exception handler
+            throw e;
+        } catch (SecretsEngineException e) {
+            log.error("Credential generation failed for role '{}': {}", roleName, e.getMessage(), e);
+            // Audit logging handled by exception handler
+            throw e;
+        } catch (Exception e) {
+            log.error("An unexpected error occurred generating credentials for role '{}': {}", roleName, e.getMessage(), e);
+            // Audit logging handled by exception handler
+            throw e;
+        }
+    }
+
+    // --- START: Temporary Revocation Endpoint for Testing (Task 30) ---
+    // TODO: Remove or replace this endpoint with a proper lease management API later.
+    /**
+     * TEMPORARY endpoint for testing lease revocation.
+     * Requires authentication and authorization (e.g., DELETE capability on db/leases/{leaseId}).
+     *
+     * @param leaseId The UUID of the lease to revoke.
+     * @return ResponseEntity indicating success (204 No Content) or failure.
+     */
+    @DeleteMapping("/leases/{leaseId}")
+    public ResponseEntity<Void> revokeDbLease(@PathVariable UUID leaseId) {
+        log.info("Received request to revoke DB lease: {}", leaseId);
+        try {
+            postgresSecretsEngine.revokeLease(leaseId);
+            log.info("Successfully revoked DB lease: {}", leaseId);
+
+            // --- Audit Log for Success ---
+            logAuditEvent( // Use the same helper as generate
+                    "db_operation",
+                    "revoke_lease", // Different action
+                    "success",
+                    HttpStatus.NO_CONTENT.value(),
+                    null, // No error message
+                    null, // No role name directly associated with revoke request path
+                    leaseId // Include lease ID
+            );
+            return ResponseEntity.noContent().build();
+        } catch (LeaseNotFoundException e) {
+            log.warn("Lease revocation failed: Lease '{}' not found.", leaseId);
+            throw e; // Let handler deal with it
+        } catch (SecretsEngineException e) {
+            log.error("Lease revocation failed for lease '{}': {}", leaseId, e.getMessage(), e);
+            throw e; // Let handler deal with it
+        }
+    }
+    // --- END: Temporary Revocation Endpoint ---
 
 
     @ExceptionHandler(RoleNotFoundException.class)
-@@ -130,6 +168,25 @@
-         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(problemDetail);
-     }
+    public ResponseEntity<ProblemDetail> handleRoleNotFound(RoleNotFoundException ex) {
+        String roleName = extractRoleNameFromPath(request.getRequestURI());
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+        problemDetail.setTitle("Role Not Found");
+        // --- Audit Log for Failure ---
+        logAuditEvent(
+                "db_operation",
+                "generate_credentials", // This handler is only for generate
+                "failure",
+                HttpStatus.NOT_FOUND.value(),
+                ex.getMessage(),
+                roleName,
+                null // No lease ID
+        );
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(problemDetail);
+    }
 
-+   // Add handler for LeaseNotFoundException (for the revoke endpoint)
-+   @ExceptionHandler(LeaseNotFoundException.class)
-+   public ResponseEntity<ProblemDetail> handleLeaseNotFound(LeaseNotFoundException ex) {
-+       UUID leaseId = extractLeaseIdFromPath(request.getRequestURI()); // Helper needed
-+       ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
-+       problemDetail.setTitle("Lease Not Found");
-+       // --- Audit Log for Failure ---
-+       logAuditEvent(
-+               "db_operation",
-+               "revoke_lease",
-+               "failure",
-+               HttpStatus.NOT_FOUND.value(),
-+               ex.getMessage(),
-+               null, // No role name
-+               leaseId
-+       );
-+       return ResponseEntity.status(HttpStatus.NOT_FOUND).body(problemDetail);
-+   }
-+
+    // Add handler for LeaseNotFoundException (for the revoke endpoint)
+    @ExceptionHandler(LeaseNotFoundException.class)
+    public ResponseEntity<ProblemDetail> handleLeaseNotFound(LeaseNotFoundException ex) {
+        UUID leaseId = extractLeaseIdFromPath(request.getRequestURI()); // Helper needed
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+        problemDetail.setTitle("Lease Not Found");
+        // --- Audit Log for Failure ---
+        logAuditEvent(
+                "db_operation",
+                "revoke_lease",
+                "failure",
+                HttpStatus.NOT_FOUND.value(),
+                ex.getMessage(),
+                null, // No role name
+                leaseId
+        );
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(problemDetail);
+    }
+
     @ExceptionHandler(VaultSealedException.class)
     public ResponseEntity<ProblemDetail> handleVaultSealed(VaultSealedException ex) {
         String roleName = extractRoleNameFromPath(request.getRequestURI());
-@@ -140,7 +197,7 @@
+        UUID leaseId = extractLeaseIdFromPath(request.getRequestURI());
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
+        problemDetail.setTitle("Vault Sealed");
+        // --- Audit Log for Failure ---
         logAuditEvent(
                 "db_operation",
-                // Determine action based on path? Or keep generic?
--               "generate_credentials", // Or "db_operation_failed"
-+               determineActionFromPath(request.getRequestURI()), // Helper needed
+               determineActionFromPath(request.getRequestURI()), // Helper needed
                 "failure",
                 HttpStatus.SERVICE_UNAVAILABLE.value(),
                 ex.getMessage(),
-@@ -153,13 +210,14 @@
+                roleName,
+                leaseId
+        );
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(problemDetail);
+    }
+
     @ExceptionHandler(SecretsEngineException.class)
     public ResponseEntity<ProblemDetail> handleSecretsEngineException(SecretsEngineException ex) {
         String roleName = extractRoleNameFromPath(request.getRequestURI());
-+       UUID leaseId = extractLeaseIdFromPath(request.getRequestURI());
+        UUID leaseId = extractLeaseIdFromPath(request.getRequestURI());
         ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, ex.getMessage());
         problemDetail.setTitle("Secrets Engine Error");
         // --- Audit Log for Failure ---
         logAuditEvent(
                 "db_operation",
--               "generate_credentials", // Or "db_operation_failed"
--               "failure",
-+               determineActionFromPath(request.getRequestURI()),
-+               "failure", // Or "error"?
+               determineActionFromPath(request.getRequestURI()),
+               "failure", // Or "error"?
                 HttpStatus.INTERNAL_SERVER_ERROR.value(),
                 ex.getMessage(),
                 roleName,
-@@ -172,6 +230,7 @@
+                leaseId
+        );
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(problemDetail);
+    }
+
      @ExceptionHandler(Exception.class)
      public ResponseEntity<ProblemDetail> handleGenericException(Exception ex) {
         String roleName = extractRoleNameFromPath(request.getRequestURI());
-+       UUID leaseId = extractLeaseIdFromPath(request.getRequestURI());
+        UUID leaseId = extractLeaseIdFromPath(request.getRequestURI());
         log.error("An unexpected error occurred processing DB credential request: {}", ex.getMessage(), ex);
         ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected internal error occurred.");
         problemDetail.setTitle("Internal Server Error");
-@@ -179,13 +238,13 @@
         // --- Audit Log for Failure ---
         logAuditEvent(
                 "db_operation",
--               "generate_credentials", // Or "system_error"
-+               determineActionFromPath(request.getRequestURI()),
+               determineActionFromPath(request.getRequestURI()),
                 "failure",
                 HttpStatus.INTERNAL_SERVER_ERROR.value(),
                 "An unexpected internal error occurred.", // Generic message for audit
                 roleName,
--               null
-+               leaseId
+                leaseId
         );
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(problemDetail);
     }
-@@ -256,6 +315,26 @@
+
+    /**
+     * Helper method to log audit events.
+     */
+    private void logAuditEvent(String type, String action, String outcome, int statusCode, String error, String roleName, UUID leaseId) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        String authenticatedPrincipal = authentication != null ? authentication.getName() : "anonymous";
+        String sourceIp = request.getRemoteAddr();
+        String requestId = (String) request.getAttribute(StaticTokenAuthFilter.REQUEST_ID_ATTR);
+        Instant timestamp = Instant.now();
+        String path = request.getRequestURI();
+        String method = request.getMethod();
+
+        AuditEvent auditEvent = new AuditEvent(
+                UUID.randomUUID(), // Audit event ID
+                timestamp,
+                type,
+                action,
+                outcome,
+                Map.of(
+                        "principal", authenticatedPrincipal,
+                        "source_ip", sourceIp,
+                        "request_id", Optional.ofNullable(requestId).orElse("N/A"),
+                        "path", path,
+                        "method", method,
+                        "status_code", statusCode,
+                        "role_name", Optional.ofNullable(roleName).orElse("N/A"),
+                        "lease_id", Optional.ofNullable(leaseId).map(UUID::toString).orElse("N/A"),
+                        "error", Optional.ofNullable(error).orElse("N/A")
+                        // DO NOT INCLUDE GENERATED PASSWORD
+                )
+        );
+        auditBackend.logEvent(auditEvent);
+    }
+
+    // --- Helper to extract roleName from path for exception handlers ---
+    private String extractRoleNameFromPath(String uri) {
+        String prefix = request.getContextPath() + "/v1/db/creds/";
+        if (uri != null && uri.startsWith(prefix)) {
+            return uri.substring(prefix.length());
+        }
         return null; // Or return "unknown"
     }
 
-+   // --- Helper to extract leaseId from path for exception handlers ---
-+   private UUID extractLeaseIdFromPath(String uri) {
-+       String prefix = request.getContextPath() + "/v1/db/leases/";
-+       if (uri != null && uri.startsWith(prefix)) {
-+           String uuidStr = uri.substring(prefix.length());
-+           try {
-+               return UUID.fromString(uuidStr);
-+           } catch (IllegalArgumentException e) {
-+               log.warn("Could not parse UUID from lease revocation path: {}", uri);
-+               return null;
-+           }
-+       }
-+       return null;
-+   }
-+
-+   // --- Helper to determine action based on path for audit logging in exceptions ---
-+   private String determineActionFromPath(String uri) {
-+       if (uri != null && uri.contains("/leases/")) return "revoke_lease";
-+       if (uri != null && uri.contains("/creds/")) return "generate_credentials";
-+       return "unknown_db_operation";
-+   }
- }
+    // --- Helper to extract leaseId from path for exception handlers ---
+    private UUID extractLeaseIdFromPath(String uri) {
+        String prefix = request.getContextPath() + "/v1/db/leases/";
+        if (uri != null && uri.startsWith(prefix)) {
+            String uuidStr = uri.substring(prefix.length());
+            try {
+                return UUID.fromString(uuidStr);
+            } catch (IllegalArgumentException e) {
+                log.warn("Could not parse UUID from lease revocation path: {}", uri);
+                return null;
+            }
+        }
+        return null;
+    }
 
-5. Run Tests:•Execute the DbControllerIntegrationTest class using your IDE or Maven (mvn test -Dtest=DbControllerIntegrationTest).•Testcontainers will automatically download the PostgreSQL image (if not present), start the container, run the tests, and stop the container.•Verify that all tests pass, including the database state checks.6. Update Task Status & Changelog:•Mark Task 30 as complete in mssm-atomic-tasks-v0-3-0.md.
+    // --- Helper to determine action based on path for audit logging in exceptions ---
+    private String determineActionFromPath(String uri) {
+        if (uri != null && uri.contains("/leases/")) return "revoke_lease";
+        if (uri != null && uri.contains("/creds/")) return "generate_credentials";
+        return "unknown_db_operation";
+    }
+}
+```
 
+### 5. Run Tests
+
+Execute the `DbControllerIntegrationTest` class using your IDE or Maven (`mvn test -Dtest=DbControllerIntegrationTest`). Testcontainers will automatically download the PostgreSQL image (if not present), start the container, run the tests, and stop the container. Verify that all tests pass, including the database state checks.
+
+### 6. Update Task Status & Changelog
+
+* Mark Task 30 as complete in `mssm-atomic-tasks-v0-3-0.md`.
+
+---
+
+## `mssm-atomic-tasks-v0-3-0.md` Excerpt
+
+```markdown
 # /Users/robertocastro/dev/lite-vault/project/mssm-atomic-tasks-v0-3-0.md
 [...]
 #### 29. [x] Write Unit Tests for PostgreSQL Engine
@@ -721,9 +862,15 @@ public class DbController {
 
 ## Result After Phase 3 Completion
 [...]
+```
 
-•Add an entry to CHANGELOG.md under [Unreleased] -> Added.
+* Add an entry to `CHANGELOG.md` under `[Unreleased] -> Added`.
 
+---
+
+## `CHANGELOG.md` Excerpt
+
+```markdown
 # /Users/robertocastro/dev/lite-vault/CHANGELOG.md
 
 ## [Unreleased]
@@ -755,5 +902,6 @@ public class DbController {
 +   Added audit logging for the temporary `DELETE /v1/db/leases/{leaseId}` endpoint (success/failure).
 +   Fulfills requirement F-CORE-130 for dynamic secrets.
 [...]
+```
 
 Congratulations! Completing Task 30 marks the achievement of the v0.3.0 milestone. You now have a functional dynamic PostgreSQL secrets engine with API endpoints, configuration, basic lease management, auditing, unit tests, and integration tests.

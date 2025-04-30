@@ -11,6 +11,8 @@ import org.springframework.stereotype.Service;
 import tech.yump.vault.audit.AuditBackend;
 import tech.yump.vault.audit.AuditEvent;
 import tech.yump.vault.config.MssmProperties;
+import tech.yump.vault.core.SealManager;
+import tech.yump.vault.core.VaultSealedException;
 import tech.yump.vault.secrets.DynamicSecretsEngine;
 import tech.yump.vault.secrets.Lease;
 import tech.yump.vault.secrets.LeaseNotFoundException;
@@ -42,6 +44,7 @@ public class PostgresSecretsEngine implements DynamicSecretsEngine {
     private final DataSource dataSource;
     private final JdbcTemplate jdbcTemplate;
     private final AuditBackend auditBackend;
+    private final SealManager sealManager;
 
     // Connection pool is managed by the injected DataSource (HikariCP by default)
     // TODO: Cache role definitions loaded from properties (Task 23) for performance?
@@ -167,6 +170,11 @@ public class PostgresSecretsEngine implements DynamicSecretsEngine {
     // --- START: Implementation of generateCredentials from Task 25 Step 2 ---
     @Override
     public Lease generateCredentials(String roleName) throws SecretsEngineException, RoleNotFoundException {
+        if (sealManager.isSealed()) {
+            log.warn("Cannot generate DB credentials for role '{}': Vault is sealed.", roleName);
+            throw new VaultSealedException("Vault is sealed");
+        }
+
         log.info("Attempting to generate credentials for DB role: {}", roleName);
 
         // 1. Look up role configuration

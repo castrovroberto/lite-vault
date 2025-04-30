@@ -15,6 +15,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import tech.yump.vault.audit.AuditBackend;
 import tech.yump.vault.audit.AuditEvent;
 import tech.yump.vault.config.MssmProperties;
+import tech.yump.vault.core.SealManager;
 import tech.yump.vault.secrets.Lease;
 import tech.yump.vault.secrets.LeaseNotFoundException;
 import tech.yump.vault.secrets.RoleNotFoundException;
@@ -57,8 +58,9 @@ class PostgresSecretsEngineTest {
     private JdbcTemplate mockJdbcTemplate;
     @Mock
     private AuditBackend mockAuditBackend;
+    @Mock
+    private SealManager mockSealManager;
 
-    // Mocks needed for checkDbConnection
     @Mock
     private Connection mockConnection;
     @Mock
