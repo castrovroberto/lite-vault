@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Basic Audit Logging Backend (Task 16):**
+  - Defined `AuditEvent` record structure to represent audit log entries (timestamp, type, action, outcome, auth, request, response, data). Includes nested records for `AuthInfo`, `RequestInfo`, `ResponseInfo`.
+  - Defined `AuditBackend` interface with a `logEvent(AuditEvent event)` method.
+  - Implemented `LogAuditBackend` service using SLF4j. This implementation serializes `AuditEvent` objects to JSON and logs them at the INFO level with an "AUDIT_EVENT:" prefix.
+  - Added Jackson `JavaTimeModule` for correct `Instant` serialization.
+  - This provides the foundational mechanism for recording security-relevant events (F-CORE-130).
 - **Basic ACL Enforcement (Task 15):**
   - Implemented `PolicyRepository` to load and cache policy definitions from configuration.
   - Created `PolicyEnforcementFilter` which runs after `StaticTokenAuthFilter`.
@@ -92,6 +98,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Custom Token Validator (Task 14):** Removed the custom validation annotation (`@ValidStaticTokenConfig`) and its validator (`StaticTokenConfigValidator`) as standard bean validation (`@NotEmpty`, `@Valid`) on the new `mappings` list provides equivalent checks.
 
 ### Security
+- **Audit Logging Foundation (F-CORE-130):** Implemented the basic backend structure for audit logging (Task 16). Includes the `AuditEvent` data structure and an `AuditBackend` interface with an SLF4j-based implementation (`LogAuditBackend`) that logs events as JSON. Actual logging calls will be added in Task 17.
 - **Authorization (F-CORE-120):** Implemented basic ACL enforcement (Task 15). Access to API endpoints (like `/v1/kv/data/**`) is now controlled by policies defined in the configuration (`mssm.policies`) and linked to static tokens (`mssm.auth.static-tokens.mappings`). The `PolicyEnforcementFilter` denies access (403 Forbidden) if no applicable policy rule grants the required capability (READ, WRITE, DELETE) for the requested path.
 - **API Authentication (F-CORE-110):** Implemented basic static token authentication. Tokens are now linked to named policies (Task 14), and these policies are enforced (Task 15).
 - **Configuration Validation:** Added startup validation for required configuration properties, including token mappings if static auth is enabled.
