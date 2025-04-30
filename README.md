@@ -53,12 +53,12 @@ To provide a secure, centralized system for managing dynamic database credential
     - Base exception classes for secrets engines (`SecretsEngineException`, etc.) were also added.
   - **Implemented (KV v1):** A static Key/Value secrets engine (`FileSystemKVSecretEngine`) is implemented. It stores arbitrary key-value pairs at logical paths, encrypting the entire map as a single blob before persisting it using the configured `StorageBackend`. (Task 12)
     - **Updated (Task 21):** The `KVSecretEngine` interface now implements the base `SecretsEngine` interface for consistency.
-  - **Implemented (PostgreSQL Core - Task 22, 24 & 25):**
+  - **Implemented (PostgreSQL Core - Task 22, 24, 25 & 26):**
     - Added the basic structure (`PostgresSecretsEngine.java` in `tech.yump.vault.secrets.db`) for the dynamic PostgreSQL secrets engine. Implements `DynamicSecretsEngine`.
     - Includes necessary JDBC dependencies (`postgresql`, `spring-boot-starter-jdbc`).
     - **Connection Management (Task 24):** Configured connection management using Spring Boot's primary `DataSource` (auto-configured via `spring.datasource.*` properties in `application-dev.yml`, which reference `mssm.secrets.db.postgres.*`) and injected the auto-configured `JdbcTemplate`. Includes a startup check (`@PostConstruct`) to verify target DB connection.
     - **Credential Generation (Task 25):** Implemented the core logic in `generateCredentials` to look up role configurations, generate unique usernames/passwords, execute configured SQL creation statements against the target database using `JdbcTemplate`, and create a `Lease` object containing the generated credentials and metadata. Includes error handling and avoids logging passwords.
-    - Contains placeholder methods (`revokeLease`) for future implementation.
+    - **Lease Management & Revocation (Task 26):** Implemented basic in-memory lease tracking using a `ConcurrentHashMap`. Leases are stored upon generation. The `revokeLease` method is now implemented to look up the lease, retrieve the username, prepare and execute the configured SQL `revocationStatements` against the target database using `JdbcTemplate`, and remove the lease from tracking upon successful revocation. Includes error handling for missing leases/roles and DB errors.
 - **Auditing:**
   - **Implemented (Task 16 & 17):** Audit logging is integrated into the API flow. The `LogAuditBackend` logs structured JSON events via SLF4j for authentication attempts (`StaticTokenAuthFilter`), authorization decisions (`PolicyEnforcementFilter`), and KV operations (`KVController`). Events include timestamp, principal, source IP, request details, outcome, and relevant metadata.
 - **Configuration:**
@@ -92,6 +92,7 @@ To provide a secure, centralized system for managing dynamic database credential
 - **Configuration Validation:** The application performs validation on required configuration properties at startup (e.g., master key, storage path, token mappings if enabled, DB connection details if configured) and will fail to start if they are missing or invalid.
 - **Database Admin Credentials:** **(Task 23)** The PostgreSQL secrets engine requires credentials (`mssm.secrets.db.postgres.username` and `password`) for a user in the *target* database with privileges to manage roles (CREATE/DROP ROLE, GRANT). **The password (`mssm.secrets.db.postgres.password`) is highly sensitive and must NOT be hardcoded in configuration files for production.** Use environment variables (e.g., `MSSM_DB_POSTGRES_PASSWORD`) or other secure injection methods. This password is also used for the primary `spring.datasource` configuration (Task 24).
 - **Password Security:** **(Task 25)** Dynamically generated database passwords are created using `java.security.SecureRandom` and are **not logged** by LiteVault. They are returned within the `Lease` object to the requesting client.
+- **Lease Revocation:** **(Task 26)** The `revokeLease` implementation attempts to execute configured SQL statements (e.g., `DROP ROLE`) in the target database to clean up credentials. Successful revocation depends on correctly configured `revocationStatements` and sufficient privileges for the admin user LiteVault connects with. If revocation fails (e.g., DB error), the lease remains tracked internally, but the credential might persist in the database.
 - **Testing:** Unit tests cover core components like encryption, storage, authentication, and authorization logic. Integration tests (Task 20) validate the KV API end-to-end, ensuring authentication, authorization, and the secrets engine work together correctly.
 
 ## Getting Started
@@ -108,10 +109,10 @@ To provide a secure, centralized system for managing dynamic database credential
 *   Create a user in the target database that LiteVault can use to manage roles (e.g., `litevault_admin`). This user needs `CREATE ROLE`, `DROP ROLE`, and relevant `GRANT` privileges.
 *   Update `mssm.secrets.db.postgres.username` (and `spring.datasource.username`) in `application-dev.yml` to this user.
 *   **Set the password for this database user securely** via the environment variable `MSSM_DB_POSTGRES_PASSWORD`. Example: `export MSSM_DB_POSTGRES_PASSWORD='your_db_admin_password'`
-*   Review and adjust the example SQL statements under `mssm.secrets.db.postgres.roles` in `application-dev.yml` to match your database schema and desired permissions. Ensure the `{{username}}` and `{{password}}` placeholders are used correctly.
+*   Review and adjust the example SQL statements under `mssm.secrets.db.postgres.roles` in `application-dev.yml` to match your database schema and desired permissions. Ensure the `creationStatements` (using `{{username}}`/`{{password}}`) and `revocationStatements` (using `{{username}}`) are correct for your environment.
 5.  **Configure Policies and Static Tokens (Needed for KV API / Future DB API):**
 *   Ensure `mssm.auth.static-tokens.enabled=true` in `application.yml` or `application-dev.yml`.
-*   Define desired access policies under the `mssm.policies:` section. Ensure policies exist for accessing the dynamic DB secrets (e.g., `path: "db/creds/*"` with `READ` capability).
+*   Define desired access policies under the `mssm.policies:` section. Ensure policies exist for accessing the dynamic DB secrets (e.g., `path: "db/creds/*"` with `READ` capability) and potentially for revoking leases (e.g., `path: "db/leases/*"` with `DELETE` capability, if you implement a revocation endpoint).
 *   Define token-to-policy mappings under `mssm.auth.static-tokens.mappings:`. Example configuration is present in `application-dev.yml`.
 6.  **Build:** `mvn clean package`
 7.  **Run:** `java -jar target/lite-vault-*.jar` (Use the actual JAR name generated in the `target` directory)

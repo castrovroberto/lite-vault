@@ -21,7 +21,9 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap; // Added
 
 /**
  * Secrets Engine implementation for dynamically generating PostgreSQL credentials.
@@ -37,9 +39,11 @@ public class PostgresSecretsEngine implements DynamicSecretsEngine {
     private final JdbcTemplate jdbcTemplate; // Spring Boot auto-configures this based on primary DataSource
 
     // Connection pool is managed by the injected DataSource (HikariCP by default)
-    // TODO: Add fields for in-memory lease tracking (Task 26)
+    // TODO: Cache role definitions loaded from properties (Task 23) for performance?
+    private final ConcurrentHashMap<UUID, Lease> activeLeases = new ConcurrentHashMap<>(); // Task 26: In-memory lease tracking
 
     // --- START: Helper methods from Task 25 Step 1 ---
+    // ... (generatePassword, generateUsername, prepareSqlStatements methods remain unchanged) ...
     private static final String ALLOWED_PASSWORD_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()-_=+";
     private static final int DEFAULT_PASSWORD_LENGTH = 32;
     private static final String USERNAME_PREFIX = "lv-"; // LiteVault prefix
@@ -108,10 +112,23 @@ public class PostgresSecretsEngine implements DynamicSecretsEngine {
     }
     // --- END: Helper methods from Task 25 Step 1 ---
 
+    // --- START: Helper method from Task 26 Step 3 ---
+    /**
+     * Retrieves an active lease by its ID from the in-memory tracker.
+     *
+     * @param leaseId The UUID of the lease to retrieve.
+     * @return An Optional containing the Lease if found, otherwise Optional.empty().
+     */
+    private Optional<Lease> getLeaseById(UUID leaseId) {
+        return Optional.ofNullable(activeLeases.get(leaseId));
+    }
+    // --- END: Helper method from Task 26 Step 3 ---
+
 
     /**
      * Simple check after initialization to verify DB connection using the configured DataSource.
      */
+    // ... (@PostConstruct checkDbConnection method remains unchanged) ...
     @PostConstruct
     public void checkDbConnection() {
         log.info("Checking connection to target PostgreSQL database via configured DataSource...");
@@ -140,6 +157,7 @@ public class PostgresSecretsEngine implements DynamicSecretsEngine {
             // Consider throwing
         }
     }
+
 
     // --- START: Implementation of generateCredentials from Task 25 Step 2 ---
     @Override
@@ -212,9 +230,11 @@ public class PostgresSecretsEngine implements DynamicSecretsEngine {
                 false // Renewable: false for now (implement renewal later if needed)
         );
 
-        // 6. Store lease details (in-memory map) - TODO in Task 26
-        log.debug("Lease created with ID: {}, TTL: {}", lease.id(), lease.ttl());
-        // leaseTracker.addLease(lease); // This will be added in Task 26
+        // --- START: Modification for Task 26 Step 2 ---
+        // 6. Store lease details in the in-memory map (Task 26)
+        activeLeases.put(lease.id(), lease);
+        log.debug("Lease {} added to active lease tracker. Current active leases: {}", lease.id(), activeLeases.size());
+        // --- END: Modification for Task 26 Step 2 ---
 
         log.info("Successfully generated credentials and lease for DB role: {}", roleName);
         // 7. Return Lease
@@ -223,16 +243,65 @@ public class PostgresSecretsEngine implements DynamicSecretsEngine {
     // --- END: Implementation of generateCredentials from Task 25 Step 2 ---
 
 
+    // --- START: Modification for Task 26 Step 4 (including self-correction) ---
     @Override
     public void revokeLease(UUID leaseId) throws SecretsEngineException, LeaseNotFoundException {
-        log.warn("PostgresSecretsEngine.revokeLease for lease ID '{}' is not yet implemented.", leaseId);
-        // TODO: Implement lease revocation logic (Future Task, beyond Phase 3 initial scope)
-        // 1. Look up lease details (username) from in-memory map using leaseId (Task 26)
+        log.info("Attempting to revoke lease with ID: {}", leaseId);
+
+        // 1. Look up lease details from in-memory map using leaseId (Task 26)
+        Lease lease = getLeaseById(leaseId)
+                .orElseThrow(() -> {
+                    log.warn("Lease not found in active tracker: {}", leaseId);
+                    return new LeaseNotFoundException(leaseId);
+                });
+
+        String username = (String) lease.secretData().get("username");
+        if (username == null) {
+            // Should not happen if lease was stored correctly, but handle defensively
+            log.error("Cannot revoke lease {}: username missing in lease data.", leaseId);
+            // Remove the potentially corrupted lease entry anyway?
+            activeLeases.remove(leaseId);
+            throw new SecretsEngineException("Internal error: Username not found for lease " + leaseId);
+        }
+        log.debug("Found lease {} for username '{}'. Proceeding with revocation logic.", leaseId, username);
+
         // 2. Look up role configuration (revocation SQL) (Task 23)
-        // 3. Use injected jdbcTemplate (which uses the DataSource/pool) (Task 24/Future)
-        // 4. Execute revocation SQL statements using jdbcTemplate.execute() or update()
-        // 5. Remove lease from in-memory map (Task 26)
-        throw new UnsupportedOperationException("revokeLease not implemented yet");
+        MssmProperties.PostgresRoleDefinition roleDefinition = properties.secrets().db().postgres().roles().get(lease.roleName());
+        if (roleDefinition == null) {
+            // Role might have been removed from config since lease was created. Still try to revoke?
+            // Guide suggests throwing an exception here as we need the statements.
+            log.error("Role definition '{}' not found for revoking lease {}. Cannot determine revocation SQL.", lease.roleName(), leaseId);
+            // Don't remove from map, as we couldn't revoke.
+            throw new SecretsEngineException("Role definition '" + lease.roleName() + "' not found, cannot determine revocation SQL for lease " + leaseId);
+        }
+
+        // 3. Prepare revocation SQL (using username, no password needed)
+        // Note: Using a simplified version of prepareSqlStatements for revocation
+        List<String> revocationSqlStatements = roleDefinition.revocationStatements().stream()
+                .map(sql -> sql.replace("{{username}}", username))
+                .toList();
+
+        // 4. Execute revocation SQL statements using jdbcTemplate
+        log.debug("Executing revocation SQL statements for lease '{}', username '{}'", leaseId, username);
+        try {
+            for (String sql : revocationSqlStatements) {
+                log.trace("Executing SQL: {}", sql); // Log SQL only at TRACE level
+                jdbcTemplate.execute(sql);
+            }
+            log.info("Successfully executed revocation SQL for lease '{}', username '{}'", leaseId, username);
+
+            // 5. Remove lease from in-memory map AFTER successful revocation (Task 26)
+            activeLeases.remove(leaseId);
+            log.info("Successfully revoked and removed lease: {}. Remaining active leases: {}", leaseId, activeLeases.size());
+
+        } catch (DataAccessException e) {
+            log.error("Database error executing revocation SQL for lease '{}', username '{}': {}",
+                    leaseId, username, e.getMessage(), e);
+            // If revocation fails, DO NOT remove the lease from the map.
+            // The credential might still exist in the DB.
+            throw new SecretsEngineException("Failed to execute credential revocation SQL for lease: " + leaseId, e);
+        }
     }
+    // --- END: Modification for Task 26 Step 4 ---
 
 }
