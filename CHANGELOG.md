@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **PostgreSQL Connection Management (Task 24):**
+  - Configured Spring Boot's primary `DataSource` via `spring.datasource.*` properties in `application-dev.yml`, referencing `mssm.secrets.db.postgres.*` values to connect to the target database.
+  - Injected the auto-configured `JdbcTemplate` into `PostgresSecretsEngine`.
+  - Added a `@PostConstruct` connection check (`checkDbConnection`) in `PostgresSecretsEngine` to verify target DB connectivity on startup.
+  - Enabled DEBUG logging for `spring-jdbc` and `HikariCP` in `application-dev.yml`.
 - **PostgreSQL Engine Configuration (Task 23):**
   - Updated `MssmProperties.java` to include nested configuration records (`SecretsProperties`, `DbSecretsProperties`, `PostgresProperties`, `PostgresRoleDefinition`) under `mssm.secrets.db.postgres`.
   - Added configuration fields for target PostgreSQL connection URL, admin username, and admin password.
@@ -34,6 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **KVSecretEngine Interface (Task 21):** Updated `KVSecretEngine` to extend the new base `SecretsEngine` interface for consistency across engine types.
 
 ### Fixed
+- **Testing (Task 24):** Corrected `MssmProperties` instantiation in `FileSystemStorageBackendTest` to include the `secrets` property, resolving a constructor mismatch caused by Task 23 changes.
+
 ### Removed
 ### Security
 

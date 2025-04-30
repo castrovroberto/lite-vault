@@ -53,7 +53,11 @@ To provide a secure, centralized system for managing dynamic database credential
     - Base exception classes for secrets engines (`SecretsEngineException`, etc.) were also added.
   - **Implemented (KV v1):** A static Key/Value secrets engine (`FileSystemKVSecretEngine`) is implemented. It stores arbitrary key-value pairs at logical paths, encrypting the entire map as a single blob before persisting it using the configured `StorageBackend`. (Task 12)
     - **Updated (Task 21):** The `KVSecretEngine` interface now implements the base `SecretsEngine` interface for consistency.
-  - **Implemented (PostgreSQL Core - Task 22):** Added the basic structure (`PostgresSecretsEngine.java` in `tech.yump.vault.secrets.db`) for the dynamic PostgreSQL secrets engine. Implements `DynamicSecretsEngine`, includes necessary JDBC dependencies (`postgresql`, `spring-boot-starter-jdbc`), injects `MssmProperties` and `DataSource`, and contains placeholder methods (`generateCredentials`, `revokeLease`). This prepares for configuration and credential generation logic in subsequent tasks.
+  - **Implemented (PostgreSQL Core - Task 22 & 24):**
+    - Added the basic structure (`PostgresSecretsEngine.java` in `tech.yump.vault.secrets.db`) for the dynamic PostgreSQL secrets engine. Implements `DynamicSecretsEngine`.
+    - Includes necessary JDBC dependencies (`postgresql`, `spring-boot-starter-jdbc`).
+    - **Connection Management (Task 24):** Configured connection management using Spring Boot's primary `DataSource` (auto-configured via `spring.datasource.*` properties in `application-dev.yml`, which reference `mssm.secrets.db.postgres.*`) and injected the auto-configured `JdbcTemplate`. Includes a startup check (`@PostConstruct`) to verify target DB connection.
+    - Contains placeholder methods (`generateCredentials`, `revokeLease`) for future implementation.
 - **Auditing:**
   - **Implemented (Task 16 & 17):** Audit logging is integrated into the API flow. The `LogAuditBackend` logs structured JSON events via SLF4j for authentication attempts (`StaticTokenAuthFilter`), authorization decisions (`PolicyEnforcementFilter`), and KV operations (`KVController`). Events include timestamp, principal, source IP, request details, outcome, and relevant metadata.
 - **Configuration:**
@@ -64,11 +68,13 @@ To provide a secure, centralized system for managing dynamic database credential
     - Connection details (URL, admin username, admin password) for LiteVault to connect to the target PostgreSQL database. **The admin password should be provided securely, e.g., via the `MSSM_DB_POSTGRES_PASSWORD` environment variable.**
     - Role definitions (a map of logical role names to SQL `creationStatements`, `revocationStatements` using `{{username}}`/`{{password}}` placeholders, and a `defaultTtl`).
     - Includes validation for these properties. See `application-dev.yml` for examples.
+  - **Implemented (DataSource - Task 24):** Added standard `spring.datasource.*` properties in `application-dev.yml` to configure the primary DataSource (connection pool) used by the PostgreSQL engine, referencing the `mssm.secrets.db.postgres.*` values.
 - **Testing:**
   - **Implemented:** Unit tests for `EncryptionService` and `FileSystemStorageBackend` covering core functionality, edge cases, and error handling.
   - **Implemented:** Unit tests for `StaticTokenAuthFilter` and `PolicyEnforcementFilter` verifying authentication logic and basic ACL enforcement decisions. (Task 19)
   - **Implemented:** Integration tests (`KVControllerIntegrationTest.java`) using `@SpringBootTest` and `MockMvc` to verify the end-to-end functionality of the KV API (`/v1/kv/data/**`). These tests validate authentication, authorization (policy enforcement), CRUD operations, and behavior when the vault is sealed, ensuring components work together correctly. (Task 20)
   - **Fixed:** Resolved failures in `PolicyEnforcementFilterTest` related to Mockito stubbing and assertions.
+  - **Fixed (Task 24):** Corrected `MssmProperties` instantiation in `FileSystemStorageBackendTest` to align with recent configuration changes.
   - **Updated:** `lite-vault-cli.sh` script enhanced to test policy enforcement scenarios.
 
 ## Security Considerations
@@ -83,7 +89,7 @@ To provide a secure, centralized system for managing dynamic database credential
 - **Authorization:** **Implemented (F-CORE-120):** Basic Access Control List (ACL) enforcement is implemented via the `PolicyEnforcementFilter` (Task 15). After successful authentication, this filter checks if the policies associated with the token grant the required capability (e.g., READ, WRITE, DELETE) for the requested API path. Path matching logic, including wildcards (`/*`), is now correctly implemented, ensuring policies work as intended. If access is not explicitly granted by a policy rule, the request is denied with a 403 Forbidden status.
 - **Auditing:** **Implemented (F-CORE-130):** Audit events are now logged for authentication attempts, authorization decisions, and KV operations via the `LogAuditBackend` (Task 16, Task 17). Events are structured JSON including timestamp, principal, source IP, request details, outcome, and relevant metadata. Sensitive data (e.g., secret values) is excluded.
 - **Configuration Validation:** The application performs validation on required configuration properties at startup (e.g., master key, storage path, token mappings if enabled, DB connection details if configured) and will fail to start if they are missing or invalid.
-- **Database Admin Credentials:** **(Task 23)** The PostgreSQL secrets engine requires credentials (`mssm.secrets.db.postgres.username` and `password`) for a user in the *target* database with privileges to manage roles (CREATE/DROP ROLE, GRANT). **The password (`mssm.secrets.db.postgres.password`) is highly sensitive and must NOT be hardcoded in configuration files for production.** Use environment variables (e.g., `MSSM_DB_POSTGRES_PASSWORD`) or other secure injection methods.
+- **Database Admin Credentials:** **(Task 23)** The PostgreSQL secrets engine requires credentials (`mssm.secrets.db.postgres.username` and `password`) for a user in the *target* database with privileges to manage roles (CREATE/DROP ROLE, GRANT). **The password (`mssm.secrets.db.postgres.password`) is highly sensitive and must NOT be hardcoded in configuration files for production.** Use environment variables (e.g., `MSSM_DB_POSTGRES_PASSWORD`) or other secure injection methods. This password is also used for the primary `spring.datasource` configuration (Task 24).
 - **Testing:** Unit tests cover core components like encryption, storage, authentication, and authorization logic. Integration tests (Task 20) validate the KV API end-to-end, ensuring authentication, authorization, and the secrets engine work together correctly.
 
 ## Getting Started
@@ -96,9 +102,9 @@ To provide a secure, centralized system for managing dynamic database credential
 3.  **Set Master Key:** Securely generate a Base64 encoded AES-256 key and set the environment variable `MSSM_MASTER_B64`. Example (Linux/macOS): `export MSSM_MASTER_B64=$(openssl rand -base64 32)`
 4.  **Configure Target Database (for Task 23+):**
   *   Ensure you have a target PostgreSQL database running.
-  *   Update the `mssm.secrets.db.postgres.connection-url` in `application-dev.yml` to point to your database.
+  *   Update the `mssm.secrets.db.postgres.connection-url` (and consequently `spring.datasource.url`) in `application-dev.yml` to point to your database.
   *   Create a user in the target database that LiteVault can use to manage roles (e.g., `litevault_admin`). This user needs `CREATE ROLE`, `DROP ROLE`, and relevant `GRANT` privileges.
-  *   Update `mssm.secrets.db.postgres.username` in `application-dev.yml` to this user.
+  *   Update `mssm.secrets.db.postgres.username` (and `spring.datasource.username`) in `application-dev.yml` to this user.
   *   **Set the password for this database user securely** via the environment variable `MSSM_DB_POSTGRES_PASSWORD`. Example: `export MSSM_DB_POSTGRES_PASSWORD='your_db_admin_password'`
   *   Review and adjust the example SQL statements under `mssm.secrets.db.postgres.roles` in `application-dev.yml` to match your database schema and desired permissions.
 5.  **Configure Policies and Static Tokens (Needed for KV API / Future DB API):**
@@ -107,5 +113,6 @@ To provide a secure, centralized system for managing dynamic database credential
   *   Define token-to-policy mappings under `mssm.auth.static-tokens.mappings:`. Example configuration is present in `application-dev.yml`.
 6.  **Build:** `mvn clean package`
 7.  **Run:** `java -jar target/lite-vault-*.jar` (Use the actual JAR name generated in the `target` directory)
+8.  **Verify Connection (Task 24):** Check the application startup logs for messages indicating successful connection to the target PostgreSQL database (e.g., `Successfully established connection...` from `PostgresSecretsEngine`). Also check for HikariCP pool startup messages.
 
 The server should start on `https://localhost:8443`. You can test KV endpoints using `curl` or the provided `lite-vault-cli.sh` script (remember to use `-k` for the self-signed certificate and provide the `X-Vault-Token` header). Note that DB secrets endpoints are not yet available or functional.

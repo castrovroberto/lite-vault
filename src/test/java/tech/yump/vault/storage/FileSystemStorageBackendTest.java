@@ -68,12 +68,21 @@ class FileSystemStorageBackendTest {
     // 6. Top-level Policies List (Use emptyList)
     List<PolicyDefinition> dummyPolicies = Collections.emptyList();
 
-    // 7. MssmProperties (Add dummyPolicies as the 4th argument)
+    // --- FIX START ---
+    // 7. Create dummy Secrets Properties (since FileSystemStorageBackend doesn't use it)
+    //    SecretsProperties expects DbSecretsProperties, which expects PostgresProperties.
+    //    Since they are not marked @NotNull, we can pass null down the chain.
+    MssmProperties.SecretsProperties dummySecretsProps = new MssmProperties.SecretsProperties(null);
+    // --- FIX END ---
+
+
+    // 8. MssmProperties (Add dummySecretsProps as the 5th argument)
     MssmProperties testProperties = new MssmProperties(
             masterKeyProps,
             storageProps,
             dummyAuthProps,
-            dummyPolicies // Add the empty policies list
+            dummyPolicies, // 4th argument
+            dummySecretsProps // 5th argument <<< ADDED
     );
 
     // --- End Correction ---
