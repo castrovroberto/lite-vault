@@ -7,33 +7,45 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication; // Added
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
+import tech.yump.vault.audit.AuditBackend; // Added
+import tech.yump.vault.audit.AuditEvent;   // Added
 import tech.yump.vault.config.MssmProperties;
 
 import java.io.IOException;
+import java.time.Instant; // Added
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;     // Added
 import java.util.Optional;
+import java.util.UUID;    // Added
 
 @Slf4j
 public class StaticTokenAuthFilter extends OncePerRequestFilter {
 
   public static final String VAULT_TOKEN_HEADER = "X-Vault-Token";
+  public static final String REQUEST_ID_ATTR = "auditRequestId"; // Added
 
   private final boolean staticAuthEnabled;
   private final List<MssmProperties.AuthProperties.StaticTokenPolicyMapping> tokenMappings;
   private final List<String> publicPaths = List.of("/sys/seal-status", "/");
+  private final AuditBackend auditBackend; // Added
 
   /**
-   * Constructor receiving the static token properties.
+   * Constructor receiving the static token properties and audit backend.
    * @param staticTokenProps The configured properties for static tokens.
+   * @param auditBackend The audit backend implementation. // Added
    */
-  public StaticTokenAuthFilter(MssmProperties.AuthProperties.StaticTokenAuthProperties staticTokenProps) {
+  public StaticTokenAuthFilter(
+          MssmProperties.AuthProperties.StaticTokenAuthProperties staticTokenProps,
+          AuditBackend auditBackend // Added
+  ) {
     this.staticAuthEnabled = Optional.ofNullable(staticTokenProps)
             .map(MssmProperties.AuthProperties.StaticTokenAuthProperties::enabled)
             .orElse(false);
@@ -42,6 +54,8 @@ public class StaticTokenAuthFilter extends OncePerRequestFilter {
             .map(MssmProperties.AuthProperties.StaticTokenAuthProperties::mappings)
             .orElse(Collections.emptyList());
 
+    this.auditBackend = auditBackend; // Added
+
     log.debug("StaticTokenAuthFilter initialized. Enabled: {}, Mappings count: {}",
             this.staticAuthEnabled, this.tokenMappings.size());
     if (this.staticAuthEnabled && this.tokenMappings.isEmpty()) {
@@ -49,36 +63,50 @@ public class StaticTokenAuthFilter extends OncePerRequestFilter {
     }
   }
 
+  // ... (keep shouldNotFilter method) ...
 
   @Override
   protected void doFilterInternal(
           @NonNull HttpServletRequest request,
           @NonNull HttpServletResponse response,
           @NonNull FilterChain filterChain) throws ServletException, IOException {
+
+    // Generate and store a unique request ID for auditing
+    String requestId = UUID.randomUUID().toString();
+    request.setAttribute(REQUEST_ID_ATTR, requestId); // Added
+
     if (!staticAuthEnabled) {
       log.trace("Static token authentication is disabled via configuration. Skipping filter.");
       filterChain.doFilter(request, response);
       return;
     }
+
     final String tokenHeader = request.getHeader(VAULT_TOKEN_HEADER);
+
+    // If no token or already authenticated, proceed without logging an auth *attempt* here
     if (!StringUtils.hasText(tokenHeader) || SecurityContextHolder.getContext().getAuthentication() != null) {
       log.trace("No {} header found or authentication already present for {}. Proceeding.",
               VAULT_TOKEN_HEADER, request.getRequestURI());
       filterChain.doFilter(request, response);
       return;
     }
+
     final String providedToken = tokenHeader.trim();
     Optional<MssmProperties.AuthProperties.StaticTokenPolicyMapping> mappingOptional = tokenMappings.stream()
             .filter(mapping -> providedToken.equals(mapping.token()))
             .findFirst();
+
     if (mappingOptional.isPresent()) {
+      // --- Successful Authentication ---
       MssmProperties.AuthProperties.StaticTokenPolicyMapping mapping = mappingOptional.get();
       List<String> associatedPolicyNames = List.copyOf(mapping.policyNames());
       log.debug("Valid token found for request URI: {}. Associating policies: {}",
               request.getRequestURI(), associatedPolicyNames);
+
       List<GrantedAuthority> authorities = associatedPolicyNames.stream()
               .map(policyName -> (GrantedAuthority) new SimpleGrantedAuthority("POLICY_" + policyName))
               .toList();
+
       UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
               mapping.token(), // Principal is the token itself
               null,            // No credentials needed here
@@ -91,18 +119,91 @@ public class StaticTokenAuthFilter extends OncePerRequestFilter {
       log.info("Successfully authenticated request using static token for URI: {}. Authorities: {}",
               request.getRequestURI(), authorities);
 
+      // --- Audit Log for Success ---
+      logAuditEvent(
+              "auth",
+              "token_validation",
+              "success",
+              authentication, // Pass the created authentication object
+              request,
+              null, // No specific response info at this stage
+              Map.of("policies", associatedPolicyNames) // Add associated policies
+      );
+
     } else {
+      // --- Failed Authentication ---
       log.warn("Invalid or unknown static token received for URI: {}", request.getRequestURI());
+
+      // --- Audit Log for Failure ---
+      logAuditEvent(
+              "auth",
+              "token_validation",
+              "failure",
+              null, // No valid authentication object
+              request,
+              null, // No specific response info at this stage
+              Map.of("reason", "invalid_token") // Add failure reason
+      );
+      // Note: We still proceed down the filter chain. Spring Security's default
+      // ExceptionTranslationFilter or our PolicyEnforcementFilter will likely deny access later.
     }
+
     filterChain.doFilter(request, response);
   }
 
-  /**
-   * Optimization: Determines if the filter should be skipped for a given request.
-   * Skips if static auth is disabled OR if the path is public.
-   */
+  // --- Helper method to build and log AuditEvent ---
+  private void logAuditEvent(String type, String action, String outcome, Authentication auth, HttpServletRequest request, AuditEvent.ResponseInfo responseInfo, Map<String, Object> data) {
+    try {
+      AuditEvent.AuthInfo.AuthInfoBuilder authInfoBuilder = AuditEvent.AuthInfo.builder()
+              .sourceAddress(request.getRemoteAddr());
+
+      if (auth != null && auth.isAuthenticated()) {
+        authInfoBuilder.principal(auth.getName()); // Use token ID as principal
+        // Extract policy names from authorities if needed, or get from data map
+        List<String> policyNames = auth.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .filter(a -> a.startsWith("POLICY_"))
+                .map(a -> a.substring("POLICY_".length()))
+                .toList();
+        if (!policyNames.isEmpty()) {
+          authInfoBuilder.metadata(Map.of("policies", policyNames));
+        }
+      } else {
+        // Optionally add info about the failed attempt if needed, e.g., masked token prefix
+        // authInfoBuilder.principal("unknown");
+      }
+
+
+      AuditEvent.RequestInfo requestInfo = AuditEvent.RequestInfo.builder()
+              .requestId((String) request.getAttribute(REQUEST_ID_ATTR)) // Retrieve request ID
+              .httpMethod(request.getMethod())
+              .path(request.getRequestURI())
+              // Avoid logging sensitive headers. User-Agent might be useful.
+              .headers(Map.of("User-Agent", Optional.ofNullable(request.getHeader("User-Agent")).orElse("N/A")))
+              .build();
+
+      AuditEvent event = AuditEvent.builder()
+              .timestamp(Instant.now())
+              .type(type)
+              .action(action)
+              .outcome(outcome)
+              .authInfo(authInfoBuilder.build())
+              .requestInfo(requestInfo)
+              .responseInfo(responseInfo) // Can be null
+              .data(data) // Additional context
+              .build();
+
+      auditBackend.logEvent(event);
+
+    } catch (Exception e) {
+      log.error("Failed to log audit event in StaticTokenAuthFilter: {}", e.getMessage(), e);
+    }
+  }
+
+  // --- Keep shouldNotFilter method ---
   @Override
   protected boolean shouldNotFilter(@NonNull HttpServletRequest request) throws ServletException {
+    // ... (existing code) ...
     String path = request.getRequestURI();
     boolean isPublicPath = publicPaths.contains(path);
 

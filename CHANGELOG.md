@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Integrate Audit Logging into API Flow (Task 17):**
+  - Injected `AuditBackend` into `StaticTokenAuthFilter`, `PolicyEnforcementFilter`, and `KVController`.
+  - Audit events are now logged (as JSON via `LogAuditBackend`) for:
+    - Authentication attempts (success/failure) in `StaticTokenAuthFilter`.
+    - Authorization decisions (granted/denied) in `PolicyEnforcementFilter`.
+    - KV operations (read/write/delete success/failure/not found) in `KVController` and its exception handlers.
+  - Added a unique request ID to each request (via `StaticTokenAuthFilter`) and included it in audit events for correlation.
+  - This fulfills the requirement for recording security-relevant events (F-CORE-130).
 - **Basic Audit Logging Backend (Task 16):**
   - Defined `AuditEvent` record structure to represent audit log entries (timestamp, type, action, outcome, auth, request, response, data). Includes nested records for `AuthInfo`, `RequestInfo`, `ResponseInfo`.
   - Defined `AuditBackend` interface with a `logEvent(AuditEvent event)` method.
@@ -85,6 +93,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Testing:** Updated `lite-vault-cli.sh` to include tests specifically for policy enforcement scenarios using different tokens.
 
 ### Fixed
+- **Policy Path Matching:** Corrected the wildcard (`/*`) matching logic in `PolicyEnforcementFilter.pathMatches` to correctly handle paths like `kv/data/myapp/config` when the policy path is `kv/data/*`. (Fixes incorrect denials for root/wildcard policies).
+- **JSON Serialization (Instant):** Corrected `ObjectMapper` usage in `PolicyEnforcementFilter` by injecting the Spring-managed bean instead of creating a new one, ensuring the `JavaTimeModule` (for `java.time.Instant`) is registered and preventing `InvalidDefinitionException` when generating 403 error responses.
 - **Configuration Binding:** Corrected structure in `application-dev.yml` under `mssm.policies` to prevent `ConverterNotFoundException` during startup (removed incomplete entry, fixed rule structure).
 - **Configuration Consistency:** Ensured policy names referenced in `mssm.auth.static-tokens.mappings` match those defined in `mssm.policies` in `application-dev.yml`.
 - **Storage Path Traversal Check:** Normalized the `basePath` in `FileSystemStorageBackend` constructor to prevent false positive path traversal errors when comparing against normalized resolved paths.
@@ -98,8 +108,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Custom Token Validator (Task 14):** Removed the custom validation annotation (`@ValidStaticTokenConfig`) and its validator (`StaticTokenConfigValidator`) as standard bean validation (`@NotEmpty`, `@Valid`) on the new `mappings` list provides equivalent checks.
 
 ### Security
-- **Audit Logging Foundation (F-CORE-130):** Implemented the basic backend structure for audit logging (Task 16). Includes the `AuditEvent` data structure and an `AuditBackend` interface with an SLF4j-based implementation (`LogAuditBackend`) that logs events as JSON. Actual logging calls will be added in Task 17.
-- **Authorization (F-CORE-120):** Implemented basic ACL enforcement (Task 15). Access to API endpoints (like `/v1/kv/data/**`) is now controlled by policies defined in the configuration (`mssm.policies`) and linked to static tokens (`mssm.auth.static-tokens.mappings`). The `PolicyEnforcementFilter` denies access (403 Forbidden) if no applicable policy rule grants the required capability (READ, WRITE, DELETE) for the requested path.
+- **Audit Logging (F-CORE-130):** **Implemented.** Audit events are now logged for authentication attempts, authorization decisions, and KV operations via the `LogAuditBackend` (Task 16, Task 17). Events are structured JSON including timestamp, principal, source IP, request details, outcome, and relevant metadata. Sensitive data (e.g., secret values) is excluded.
+- **Authorization (F-CORE-120):** Implemented basic ACL enforcement (Task 15). Access to API endpoints (like `/v1/kv/data/**`) is now controlled by policies defined in the configuration (`mssm.policies`) and linked to static tokens (`mssm.auth.static-tokens.mappings`). The `PolicyEnforcementFilter` denies access (403 Forbidden) if no applicable policy rule grants the required capability (READ, WRITE, DELETE) for the requested path. Path matching logic, including wildcards, is now correctly implemented.
 - **API Authentication (F-CORE-110):** Implemented basic static token authentication. Tokens are now linked to named policies (Task 14), and these policies are enforced (Task 15).
 - **Configuration Validation:** Added startup validation for required configuration properties, including token mappings if static auth is enabled.
 - **Encryption in Transit:** API communication encrypted using TLS 1.2/1.3 (NFR-SEC-110) via self-signed cert for dev.

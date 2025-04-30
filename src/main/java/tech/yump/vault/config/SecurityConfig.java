@@ -1,7 +1,9 @@
 package tech.yump.vault.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired; // Added
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -10,41 +12,46 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import tech.yump.vault.auth.PolicyEnforcementFilter; // Import the new filter
+import tech.yump.vault.audit.AuditBackend; // Added
+import tech.yump.vault.auth.PolicyEnforcementFilter;
 import tech.yump.vault.auth.StaticTokenAuthFilter;
-import tech.yump.vault.auth.policy.PolicyRepository; // Import the repository
+import tech.yump.vault.auth.policy.PolicyRepository;
 
 import java.util.Collections;
 
 @Configuration
 @EnableWebSecurity
-@RequiredArgsConstructor
+@RequiredArgsConstructor // Keeps constructor injection for final fields
 @Slf4j
 public class SecurityConfig {
 
   private final MssmProperties mssmProperties;
-  private final PolicyRepository policyRepository; // Inject the repository
+  private final PolicyRepository policyRepository;
+  private final AuditBackend auditBackend;
+  private final ObjectMapper objectMapper;
 
   @Bean
-  public StaticTokenAuthFilter staticTokenAuthFilter() {
+  public StaticTokenAuthFilter staticTokenAuthFilter() { // Removed AuditBackend from params, use injected field
     MssmProperties.AuthProperties authProps = mssmProperties.auth();
     MssmProperties.AuthProperties.StaticTokenAuthProperties staticTokenProps = (authProps != null) ? authProps.staticTokens() : null;
 
+    MssmProperties.AuthProperties.StaticTokenAuthProperties effectiveProps;
     if (staticTokenProps != null && staticTokenProps.enabled()) {
       log.debug("Static token authentication enabled. Creating StaticTokenAuthFilter with configured properties.");
-      return new StaticTokenAuthFilter(staticTokenProps);
+      effectiveProps = staticTokenProps;
     } else {
       log.debug("Static token authentication disabled. Creating dummy StaticTokenAuthFilter.");
-      return new StaticTokenAuthFilter(
-              new MssmProperties.AuthProperties.StaticTokenAuthProperties(false, Collections.emptyList())
-      );
+      effectiveProps = new MssmProperties.AuthProperties.StaticTokenAuthProperties(false, Collections.emptyList());
     }
+    // Pass the injected auditBackend to the filter constructor
+    return new StaticTokenAuthFilter(effectiveProps, auditBackend); // Modified
   }
 
   @Bean
-  public PolicyEnforcementFilter policyEnforcementFilter() {
+  public PolicyEnforcementFilter policyEnforcementFilter() { // Removed AuditBackend from params, use injected field
     log.debug("Creating PolicyEnforcementFilter.");
-    return new PolicyEnforcementFilter(policyRepository);
+    // Pass the injected auditBackend to the filter constructor
+    return new PolicyEnforcementFilter(policyRepository, auditBackend, objectMapper); // Modified
   }
 
   @Bean

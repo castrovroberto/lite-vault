@@ -71,6 +71,12 @@
       <artifactId>spring-boot-starter-test</artifactId>
       <scope>test</scope>
     </dependency>
+
+    <!-- Task 17 audit logging dependency -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.datatype</groupId>
+      <artifactId>jackson-datatype-jsr310</artifactId>
+    </dependency>
   </dependencies>
 
   <build>
