@@ -47,7 +47,12 @@ To provide a secure, centralized system for managing dynamic database credential
     - Access is denied with HTTP 403 Forbidden if no matching policy rule grants the necessary capability.
     - **Fixed:** Path matching logic for wildcards (`/*`) now correctly evaluates policies.
 - **Secrets Engines:**
+  - **Defined (Core Interfaces - Task 21):**
+    - Foundational interfaces (`SecretsEngine`, `DynamicSecretsEngine`) and data structures (`Lease` record) have been defined to establish a common contract for all secrets engines.
+    - This prepares the architecture for implementing dynamic secrets engines (e.g., PostgreSQL) alongside the existing static KV engine.
+    - Base exception classes for secrets engines (`SecretsEngineException`, etc.) were also added.
   - **Implemented (KV v1):** A static Key/Value secrets engine (`FileSystemKVSecretEngine`) is implemented. It stores arbitrary key-value pairs at logical paths, encrypting the entire map as a single blob before persisting it using the configured `StorageBackend`. (Task 12)
+    - **Updated (Task 21):** The `KVSecretEngine` interface now implements the base `SecretsEngine` interface for consistency.
 - **Auditing:**
   - **Implemented (Task 16 & 17):** Audit logging is integrated into the API flow. The `LogAuditBackend` logs structured JSON events via SLF4j for authentication attempts (`StaticTokenAuthFilter`), authorization decisions (`PolicyEnforcementFilter`), and KV operations (`KVController`). Events include timestamp, principal, source IP, request details, outcome, and relevant metadata.
 - **Configuration:**

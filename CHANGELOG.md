@@ -8,12 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Core Secrets Engine Interfaces (Task 21):**
+  - Defined base `SecretsEngine` marker interface.
+  - Defined `DynamicSecretsEngine` interface extending `SecretsEngine`, specifying contracts for `generateCredentials` and `revokeLease`.
+  - Defined `Lease` record (`java.lang.Record`) to structure data for dynamically generated secrets (ID, TTL, data, timestamps, etc.).
+  - Added base exception classes (`SecretsEngineException`, `RoleNotFoundException`, `LeaseNotFoundException`) for secrets engine operations.
+  - This establishes a common structure for current (KV) and future (e.g., dynamic DB) secrets engines, enhancing extensibility (NFR-MTN-500).
+
 ### Changed
+- **KVSecretEngine Interface (Task 21):** Updated `KVSecretEngine` to extend the new base `SecretsEngine` interface for consistency across engine types.
+
 ### Fixed
 ### Removed
 ### Security
 
-## [0.2.0] - 2024-05-16
+## [0.2.0] - 2025-04-29
 
 ### Added
 - **Integration Tests for KV API (Task 20):**

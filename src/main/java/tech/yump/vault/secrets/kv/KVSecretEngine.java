@@ -1,5 +1,7 @@
 package tech.yump.vault.secrets.kv;
 
+import tech.yump.vault.secrets.SecretsEngine;
+
 import java.util.Map;
 import java.util.Optional;
 
@@ -8,7 +10,7 @@ import java.util.Optional;
  * Implementations handle the storage and retrieval of arbitrary key-value pairs
  * at specified logical paths, leveraging underlying encryption and storage backends.
  */
-public interface KVSecretEngine {
+public interface KVSecretEngine extends SecretsEngine {
 
     /**
      * Reads the secret data (key-value map) stored at the specified logical path.
