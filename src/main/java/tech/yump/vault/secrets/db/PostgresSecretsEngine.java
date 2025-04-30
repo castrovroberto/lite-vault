@@ -5,7 +5,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import tech.yump.vault.audit.AuditBackend;
+import tech.yump.vault.audit.AuditEvent;
 import tech.yump.vault.config.MssmProperties;
 import tech.yump.vault.secrets.DynamicSecretsEngine;
 import tech.yump.vault.secrets.Lease;
@@ -29,18 +33,19 @@ import java.util.concurrent.ConcurrentHashMap; // Added
  * Secrets Engine implementation for dynamically generating PostgreSQL credentials.
  */
 @Slf4j
-@Service // Register as a Spring Bean
-@RequiredArgsConstructor // Creates constructor for final fields (dependency injection)
+@Service
+@RequiredArgsConstructor
 public class PostgresSecretsEngine implements DynamicSecretsEngine {
 
-    // Dependencies injected via constructor by Lombok's @RequiredArgsConstructor
+
     private final MssmProperties properties;
-    private final DataSource dataSource; // Spring Boot auto-configures this
-    private final JdbcTemplate jdbcTemplate; // Spring Boot auto-configures this based on primary DataSource
+    private final DataSource dataSource;
+    private final JdbcTemplate jdbcTemplate;
+    private final AuditBackend auditBackend;
 
     // Connection pool is managed by the injected DataSource (HikariCP by default)
     // TODO: Cache role definitions loaded from properties (Task 23) for performance?
-    private final ConcurrentHashMap<UUID, Lease> activeLeases = new ConcurrentHashMap<>(); // Task 26: In-memory lease tracking
+    private final ConcurrentHashMap<UUID, Lease> activeLeases = new ConcurrentHashMap<>();
 
     // --- START: Helper methods from Task 25 Step 1 ---
     // ... (generatePassword, generateUsername, prepareSqlStatements methods remain unchanged) ...
@@ -230,11 +235,18 @@ public class PostgresSecretsEngine implements DynamicSecretsEngine {
                 false // Renewable: false for now (implement renewal later if needed)
         );
 
-        // --- START: Modification for Task 26 Step 2 ---
-        // 6. Store lease details in the in-memory map (Task 26)
         activeLeases.put(lease.id(), lease);
         log.debug("Lease {} added to active lease tracker. Current active leases: {}", lease.id(), activeLeases.size());
-        // --- END: Modification for Task 26 Step 2 ---
+
+        logAuditEvent(
+                "db_operation",
+                "lease_creation",
+                "success",
+                Map.of(
+                        "lease_id", lease.id().toString(),
+                        "role_name", roleName
+                )
+        );
 
         log.info("Successfully generated credentials and lease for DB role: {}", roleName);
         // 7. Return Lease
@@ -294,14 +306,58 @@ public class PostgresSecretsEngine implements DynamicSecretsEngine {
             activeLeases.remove(leaseId);
             log.info("Successfully revoked and removed lease: {}. Remaining active leases: {}", leaseId, activeLeases.size());
 
+            logAuditEvent(
+                    "db_operation",
+                    "revoke_lease",
+                    "success",
+                    Map.of("lease_id", leaseId.toString())
+            );
+
         } catch (DataAccessException e) {
             log.error("Database error executing revocation SQL for lease '{}', username '{}': {}",
                     leaseId, username, e.getMessage(), e);
-            // If revocation fails, DO NOT remove the lease from the map.
-            // The credential might still exist in the DB.
+
+            logAuditEvent(
+                    "db_operation",
+                    "revoke_lease",
+                    "failure",
+                    Map.of(
+                            "lease_id", leaseId.toString(),
+                            "error", e.getMessage())
+            );
+
             throw new SecretsEngineException("Failed to execute credential revocation SQL for lease: " + leaseId, e);
         }
     }
-    // --- END: Modification for Task 26 Step 4 ---
+
+    private void logAuditEvent(
+            String type,
+            String action,
+            String outcome,
+            Map<String, Object> data) {
+        try {
+            String principal = "system";
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            if (authentication != null && authentication.isAuthenticated()) {
+                principal = authentication.getName();
+            }
+
+            AuditEvent.AuthInfo authInfo = AuditEvent.AuthInfo.builder()
+                    .principal(principal)
+                    .build();
+
+            AuditEvent auditEvent = AuditEvent.builder()
+                    .timestamp(Instant.now())
+                    .type(type)
+                    .action(action)
+                    .outcome(outcome)
+                    .authInfo(authInfo)
+                    .data(data)
+                    .build();
+            auditBackend.logEvent(auditEvent);
+        } catch (Exception e) {
+            log.error("Failed to log audit event in PostgresSecretsEngine: {}", e.getMessage(), e);
+        }
+    }
 
 }
