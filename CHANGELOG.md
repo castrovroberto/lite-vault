@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+### Changed
+### Fixed
+### Removed
+### Security
+
+## [0.2.0] - 2024-05-16
+
+### Added
 - **Integration Tests for KV API (Task 20):**
   - Added `@SpringBootTest` integration tests (`KVControllerIntegrationTest.java`) using `MockMvc` to validate the KV API endpoints (`/v1/kv/data/**`).
   - Tests cover authentication (valid/invalid/no token), authorization (policy enforcement based on capabilities and paths from `application-dev.yml`), successful CRUD operations, and behavior when the vault is sealed (503 response).
@@ -124,3 +132,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Initial Unseal:** Relies on `mssm.master.b64` property.
 
 ---
+<!-- Optional: Add link definitions for comparing versions -->
+[Unreleased]: https://github.com/your-username/lite-vault/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/your-username/lite-vault/releases/tag/v0.2.0
+<!-- If you had a v0.1.0 tag, you could compare [0.2.0]: https://github.com/your-username/lite-vault/compare/v0.1.0...v0.2.0 -->

@@ -1,6 +1,6 @@
 # Minimal Secure Secrets Manager (MSSM) - LiteVault
 
-**Version:** 0.1.0 (Unreleased changes targeting v0.2.0)
+**Version:** 0.2.0
 
 A minimal implementation of a secure secrets manager inspired by HashiCorp Vault, focusing on core security primitives and essential features like dynamic secrets and key rotation. Built with Java 21 and Spring Boot.
 
@@ -10,7 +10,7 @@ To provide a secure, centralized system for managing dynamic database credential
 
 *(Keep Introduction, Scope, etc. if you have them)*
 
-## Current Status & Features (In Progress)
+## Current Status & Features (As of v0.2.0)
 
 - **Project Setup:** Maven project initialized with Java 21 and Spring Boot. Basic directory structure and `.gitignore` in place.
 - **Dependencies:** Includes Spring Boot starters for Web, Validation, Security, Test. Includes Lombok, BouncyCastle, and Jackson Datatype JSR310.
@@ -87,4 +87,7 @@ To provide a secure, centralized system for managing dynamic database credential
 *   Ensure `mssm.auth.static-tokens.enabled=true` in `application.yml` or `application-dev.yml`.
 *   Define desired access policies under the `mssm.policies:` section in your configuration file.
 *   Define token-to-policy mappings under `mssm.auth.static-tokens.mappings:`. These policies will now be enforced. Example:
-      
+5.  **Build:** `mvn clean package`
+6.  **Run:** `java -jar target/lite-vault-0.2.0.jar`
+
+The server should start on `https://localhost:8443`. You can test endpoints using `curl` or the provided `lite-vault-cli.sh` script (remember to use `-k` for the self-signed certificate and provide the `X-Vault-Token` header).
