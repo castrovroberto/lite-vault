@@ -118,7 +118,7 @@ class PostgresSecretsEngineTest {
         // (Based on the original postgresProperties instantiation)
         lenient().when(mockPostgresProperties.connectionUrl()).thenReturn("jdbc:postgresql://host:5432/db");
         lenient().when(mockPostgresProperties.username()).thenReturn("user");
-        lenient().when(mockPostgresProperties.password()).thenReturn("pass");
+        lenient().when(mockPostgresProperties.password()).thenReturn("pass".toCharArray());
     }
 
     // --- Tests for checkDbConnection (@PostConstruct) ---

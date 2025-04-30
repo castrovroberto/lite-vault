@@ -10,9 +10,11 @@ import org.springframework.validation.annotation.Validated;
 import tech.yump.vault.auth.policy.PolicyDefinition;
 
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Configuration properties for the MSSM application under the 'mssm' prefix.
@@ -124,13 +126,47 @@ public record MssmProperties(
             @NotBlank(message = "PostgreSQL admin username (mssm.secrets.db.postgres.username) must be provided.")
             String username,
 
-            @NotBlank(message = "PostgreSQL admin password (mssm.secrets.db.postgres.password) must be provided.")
-            String password,
+            @NotNull(message = "PostgreSQL admin password (mssm.secrets.db.postgres.password) must be provided and cannot be null.") // Changed from @NotBlank
+            char[] password,
 
             @NotEmpty(message = "At least one PostgreSQL role definition (mssm.secrets.db.postgres.roles) must be provided.")
             @Valid
             Map<String, PostgresRoleDefinition> roles
-    ) {}
+    ) {
+        @AssertTrue(message = "PostgreSQL admin password (mssm.secrets.db.postgres.password) must not be empty.")
+        private boolean isPasswordNotEmpty() {
+            return password != null && password.length > 0;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            PostgresProperties that = (PostgresProperties) o;
+            return Objects.equals(connectionUrl, that.connectionUrl) &&
+                    Objects.equals(username, that.username) &&
+                    Arrays.equals(password, that.password) &&
+                    Objects.equals(roles, that.roles);
+        }
+
+        @Override
+        public int hashCode() {
+            int result = Objects.hash(connectionUrl, username, roles);
+            result = 31 * result + Arrays.hashCode(password);
+            return result;
+        }
+
+        @Override
+        public String toString() {
+            // Avoid logging the password in toString()
+            return "PostgresProperties[" +
+                    "connectionUrl='" + connectionUrl + '\'' +
+                    ", username='" + username + '\'' +
+                    ", password=******" +
+                    ", roles=" + roles +
+                    ']';
+        }
+    }
 
     @Validated
     public record PostgresRoleDefinition(

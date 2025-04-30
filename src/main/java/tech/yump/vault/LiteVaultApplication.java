@@ -3,11 +3,14 @@ package tech.yump.vault;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import tech.yump.vault.config.MssmProperties;
 
 @Slf4j
-@SpringBootApplication
+@SpringBootApplication(
+        exclude = { DataSourceAutoConfiguration.class }
+)
 @EnableConfigurationProperties(MssmProperties.class)
 public class LiteVaultApplication {
 
