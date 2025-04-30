@@ -1,6 +1,6 @@
 # Minimal Secure Secrets Manager (MSSM) - LiteVault
 
-**Version:** 0.2.0
+**Version:** 0.2.0 (Unreleased changes in progress)
 
 A minimal implementation of a secure secrets manager inspired by HashiCorp Vault, focusing on core security primitives and essential features like dynamic secrets and key rotation. Built with Java 21 and Spring Boot.
 
@@ -10,10 +10,10 @@ To provide a secure, centralized system for managing dynamic database credential
 
 *(Keep Introduction, Scope, etc. if you have them)*
 
-## Current Status & Features (As of v0.2.0)
+## Current Status & Features (As of v0.2.0 + Unreleased)
 
 - **Project Setup:** Maven project initialized with Java 21 and Spring Boot. Basic directory structure and `.gitignore` in place.
-- **Dependencies:** Includes Spring Boot starters for Web, Validation, Security, Test. Includes Lombok, BouncyCastle, and Jackson Datatype JSR310.
+- **Dependencies:** Includes Spring Boot starters for Web, Validation, Security, JDBC, Test. Includes Lombok, BouncyCastle, Jackson Datatype JSR310, and PostgreSQL driver.
 - **Core Encryption:**
   - **Implemented:** Foundational cryptographic layer using **AES-256-GCM** (`EncryptionService.java`). Provides authenticated encryption for data at rest.
   - **Note:** Now retrieves the master key from `SealManager`; cryptographic operations are blocked if the vault is sealed.
@@ -53,6 +53,7 @@ To provide a secure, centralized system for managing dynamic database credential
     - Base exception classes for secrets engines (`SecretsEngineException`, etc.) were also added.
   - **Implemented (KV v1):** A static Key/Value secrets engine (`FileSystemKVSecretEngine`) is implemented. It stores arbitrary key-value pairs at logical paths, encrypting the entire map as a single blob before persisting it using the configured `StorageBackend`. (Task 12)
     - **Updated (Task 21):** The `KVSecretEngine` interface now implements the base `SecretsEngine` interface for consistency.
+  - **Implemented (PostgreSQL Core - Task 22):** Added the basic structure (`PostgresSecretsEngine.java` in `tech.yump.vault.secrets.db`) for the dynamic PostgreSQL secrets engine. Implements `DynamicSecretsEngine`, includes necessary JDBC dependencies (`postgresql`, `spring-boot-starter-jdbc`), injects `MssmProperties` and `DataSource`, and contains placeholder methods (`generateCredentials`, `revokeLease`). This prepares for configuration and credential generation logic in subsequent tasks.
 - **Auditing:**
   - **Implemented (Task 16 & 17):** Audit logging is integrated into the API flow. The `LogAuditBackend` logs structured JSON events via SLF4j for authentication attempts (`StaticTokenAuthFilter`), authorization decisions (`PolicyEnforcementFilter`), and KV operations (`KVController`). Events include timestamp, principal, source IP, request details, outcome, and relevant metadata.
 - **Configuration:**
@@ -89,10 +90,10 @@ To provide a secure, centralized system for managing dynamic database credential
 2.  **Set Keystore Password:** Set the environment variable `MSSM_KEYSTORE_PASSWORD` to match the password used when generating the keystore.
 3.  **Set Master Key:** Securely generate a Base64 encoded AES-256 key and set the environment variable `MSSM_MASTER_B64`. Example (Linux/macOS): `export MSSM_MASTER_B64=$(openssl rand -base64 32)`
 4.  **Configure Policies and Static Tokens (Needed for KV API):**
-*   Ensure `mssm.auth.static-tokens.enabled=true` in `application.yml` or `application-dev.yml`.
-*   Define desired access policies under the `mssm.policies:` section in your configuration file.
-*   Define token-to-policy mappings under `mssm.auth.static-tokens.mappings:`. These policies will now be enforced. Example:
+  *   Ensure `mssm.auth.static-tokens.enabled=true` in `application.yml` or `application-dev.yml`.
+  *   Define desired access policies under the `mssm.policies:` section in your configuration file.
+  *   Define token-to-policy mappings under `mssm.auth.static-tokens.mappings:`. These policies will now be enforced. Example configuration is present in `application-dev.yml`.
 5.  **Build:** `mvn clean package`
-6.  **Run:** `java -jar target/lite-vault-0.2.0.jar`
+6.  **Run:** `java -jar target/lite-vault-*.jar` (Use the actual JAR name generated in the `target` directory)
 
-The server should start on `https://localhost:8443`. You can test endpoints using `curl` or the provided `lite-vault-cli.sh` script (remember to use `-k` for the self-signed certificate and provide the `X-Vault-Token` header).
+The server should start on `https://localhost:8443`. You can test endpoints using `curl` or the provided `lite-vault-cli.sh` script (remember to use `-k` for the self-signed certificate and provide the `X-Vault-Token` header). Note that DB secrets endpoints are not yet available.

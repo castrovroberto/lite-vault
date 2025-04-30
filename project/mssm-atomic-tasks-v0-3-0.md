@@ -8,7 +8,7 @@
 
 ### Phase 3 Atomic Tasks (21-30)
 
-#### 21. [ ] Define Core Secrets Engine Interfaces
+#### 21. [x] Define Core Secrets Engine Interfaces
 - **Description:**
     - Define a generic `SecretsEngine` interface (if not implicitly done).
     - Define a more specific `DynamicSecretsEngine` interface extending the base, potentially including methods for `generateCredentials(roleName)`, `revokeLease(leaseId)`.

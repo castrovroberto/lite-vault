@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **PostgreSQL Secrets Engine Core (Task 22):**
+  - Created `PostgresSecretsEngine` class in `tech.yump.vault.secrets.db` package.
+  - Implemented the `DynamicSecretsEngine` interface.
+  - Added `@Service` annotation for Spring bean registration.
+  - Set up constructor injection for `MssmProperties` and `DataSource`.
+  - Included placeholder implementations for `generateCredentials` and `revokeLease`.
+  - Added `org.postgresql:postgresql` and `org.springframework.boot:spring-boot-starter-jdbc` dependencies to `pom.xml`.
+  - This provides the foundational structure for the dynamic PostgreSQL secrets engine.
 - **Core Secrets Engine Interfaces (Task 21):**
   - Defined base `SecretsEngine` marker interface.
   - Defined `DynamicSecretsEngine` interface extending `SecretsEngine`, specifying contracts for `generateCredentials` and `revokeLease`.
