@@ -3,23 +3,24 @@ package tech.yump.vault.api.advice;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
-// Removed SecurityContextHolder and related imports if only used for audit
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.lang.NonNull;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
-// Removed AuditBackend and AuditEvent imports
-import tech.yump.vault.audit.AuditHelper; // Added
-// Removed StaticTokenAuthFilter import if only used for REQUEST_ID_ATTR (now handled by helper)
+import tech.yump.vault.audit.AuditHelper;
 import tech.yump.vault.core.VaultSealedException;
 import tech.yump.vault.secrets.LeaseNotFoundException;
 import tech.yump.vault.secrets.RoleNotFoundException;
 import tech.yump.vault.secrets.SecretsEngineException;
 import tech.yump.vault.secrets.kv.KVEngineException;
 
-// Removed time, collections, map, optional imports if only used for audit
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -150,6 +151,50 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ResponseEntity.status(status).body(problemDetail);
     }
 
+
+    @Override
+    protected ResponseEntity<Object> handleHttpMessageNotReadable(
+            @NonNull HttpMessageNotReadableException ex, @NonNull HttpHeaders headers, @NonNull HttpStatusCode status, @NonNull WebRequest request) {
+
+        // status parameter should already be BAD_REQUEST (400)
+        String message = "Malformed request body. Please check the JSON format."; // User-friendly message
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(status, message);
+        problemDetail.setTitle("Bad Request");
+
+        // Extract HttpServletRequest if needed by helper methods
+        HttpServletRequest servletRequest = null; // Initialize to null
+        if (request instanceof org.springframework.web.context.request.ServletWebRequest servletWebRequest) { // Check and cast
+            servletRequest = servletWebRequest.getRequest(); // Get the native request using the correct method
+        }
+
+        // Log the underlying cause for debugging, but don't expose it in the response
+        // Use request.getDescription(false) for URI
+        log.warn("Bad request: Malformed JSON received. Request: {}. Details: {}",
+                request.getDescription(false), // Provides method and URI
+                ex.getMessage());
+
+        // Use AuditHelper
+        if (servletRequest != null) { // Check if servletRequest was obtainable
+            auditHelper.logHttpEvent(
+                    "request_validation",
+                    determineActionFromRequest(servletRequest), // Pass servletRequest
+                    "failure",
+                    status.value(),
+                    message, // Log the user-facing message
+                    extractContextData(servletRequest) // Pass servletRequest
+            );
+        } else {
+            log.error("Could not obtain HttpServletRequest from WebRequest for audit logging in handleHttpMessageNotReadable.");
+            // Optionally log a simplified audit event without request-specific details
+        }
+
+        // Use handleExceptionInternal or return ResponseEntity directly
+        // Using handleExceptionInternal ensures consistent response structure
+        return handleExceptionInternal(ex, problemDetail, headers, status, request);
+    }
+    // --- END: Modified Handler for Malformed JSON ---
+
+
     // --- Fallback Handler ---
 
     @ExceptionHandler(Exception.class)
@@ -175,12 +220,15 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     // --- REMOVED Audit Logging Helper (logAuditEvent) ---
 
     // --- Helper Methods for Audit Context (determineEventType, determineActionFromRequest, extractContextData) remain unchanged ---
+    // Ensure these methods accept HttpServletRequest if they need specific details not in WebRequest
     private String determineEventType(HttpServletRequest request) {
         String path = request.getRequestURI();
         if (path.startsWith("/v1/kv/")) {
             return "kv_operation";
         } else if (path.startsWith("/v1/db/")) {
             return "db_operation";
+        } else if (path.startsWith("/v1/jwt/")) { // Add JWT
+            return "jwt_operation";
         }
         return "request_error"; // Default type
     }
@@ -191,6 +239,9 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
         if (path.contains("/v1/db/creds/")) return "generate_credentials";
         if (path.contains("/v1/db/leases/")) return "revoke_lease";
+        if (path.contains("/v1/jwt/sign/")) return "sign_jwt"; // Add JWT
+        if (path.contains("/v1/jwt/rotate/")) return "rotate_jwt_key"; // Add JWT
+        if (path.contains("/v1/jwt/jwks/")) return "get_jwks"; // Add JWT
 
         if (path.contains("/v1/kv/data/")) {
             return switch (method.toUpperCase()) {
@@ -229,6 +280,15 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             data.put("kv_path", kvMatcher.group(1));
             return data;
         }
+
+        // Add JWT context extraction
+        Pattern jwtKeyPathPattern = Pattern.compile(".*/v1/jwt/(?:sign|rotate|jwks)/([^/]+)");
+        Matcher jwtMatcher = jwtKeyPathPattern.matcher(uri);
+        if (jwtMatcher.matches()) {
+            data.put("jwt_key_name", jwtMatcher.group(1));
+            return data;
+        }
+
 
         // Add more specific context extraction if needed
         return data; // Return empty map if no specific context found

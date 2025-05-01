@@ -201,6 +201,7 @@ public class JwtController {
                 .body(new ApiError("Internal server error during JWT operation."));
     }
 
+    /*
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> handleGenericException(Exception ex) {
         log.error("Unexpected error during JWT operation: {}", ex.getMessage(), ex);
@@ -218,6 +219,7 @@ public class JwtController {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(new ApiError("An unexpected error occurred."));
     }
+    */
 
     // Helper to extract key name from exception messages
     private static Optional<String> extractKeyName(String message) {

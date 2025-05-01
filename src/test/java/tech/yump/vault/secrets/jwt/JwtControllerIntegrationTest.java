@@ -14,11 +14,8 @@ import io.jsonwebtoken.LocatorAdapter;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
-// import org.junit.jupiter.api.MethodOrderer; // Removed Step 1
 import org.junit.jupiter.api.Nested;
-// import org.junit.jupiter.api.Order; // Removed Step 1
 import org.junit.jupiter.api.Test;
-// import org.junit.jupiter.api.TestMethodOrder; // Removed Step 1
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -76,6 +73,8 @@ public class JwtControllerIntegrationTest {
     @DynamicPropertySource
     static void configurePropertiesRevised(DynamicPropertyRegistry registry) {
         registry.add("mssm.storage.filesystem.path", () -> staticTempDir.toAbsolutePath().toString());
+        // Ensure the master key is defined for unsealing in @BeforeEach
+        registry.add("mssm.master.b64", () -> "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
     }
 
     // --- Constants for tests ---
@@ -684,7 +683,12 @@ public class JwtControllerIntegrationTest {
             } else if (result.getResponse().getStatus() == HttpStatus.OK.value()) {
                 log.info("Key '{}' already exists for SecurityTests.", RSA_KEY_NAME);
             } else {
-                log.warn("Unexpected status {} when checking for key '{}' existence.", result.getResponse().getStatus(), RSA_KEY_NAME);
+                // If sealed, it might return 503, which is ok for this check (key config exists but inaccessible)
+                if (result.getResponse().getStatus() != HttpStatus.SERVICE_UNAVAILABLE.value()) {
+                    log.warn("Unexpected status {} when checking for key '{}' existence.", result.getResponse().getStatus(), RSA_KEY_NAME);
+                } else {
+                    log.info("Key '{}' check returned 503 (Sealed), assuming config exists.", RSA_KEY_NAME);
+                }
             }
             log.info("<<< Finished @BeforeEach ensureKeyExists for SecurityTests >>>");
         }
@@ -760,7 +764,160 @@ public class JwtControllerIntegrationTest {
                     .andExpect(status().isOk()); // Verifies permitAll() in SecurityConfig
         }
     }
-    // Task 5.5 tests (Error Handling) will go here...
+
+    // --- START: Task 5.5 Error Handling Tests ---
+    @Nested
+    @DisplayName("Task 5.5: Error Handling Tests")
+    class ErrorHandlingTests {
+
+        // Constants specific to this nested class or reused from outer class
+        private static final String NON_EXISTENT_KEY = "no-such-key-exists";
+        // Reusing RSA_KEY_NAME, ADMIN_TOKEN, RSA_SIGNING_TOKEN, path formats from outer class
+
+        // Note: The outer class @BeforeEach ensures the vault is UNSEALED before each test.
+        // Tests requiring a SEALED vault must seal it explicitly.
+
+        // --- Vault Sealed Tests (503 Service Unavailable) ---
+
+        @Test
+        @DisplayName("When Vault Sealed: POST /sign/{key} should return 503")
+        void postSign_whenSealed_then503() throws Exception {
+            log.info("Testing POST /sign when sealed");
+            // Arrange: Seal the vault
+            sealManager.seal();
+            assertThat(sealManager.isSealed()).isTrue(); // Verify sealed state
+
+            Map<String, Object> dummyClaims = Map.of("sub", "test");
+
+            // Act & Assert
+            mockMvc.perform(post(String.format(SIGN_PATH_FORMAT, RSA_KEY_NAME))
+                            // Use a token that *would* normally be allowed (like signer)
+                            .with(authentication(createAuthenticationToken(RSA_SIGNING_TOKEN, List.of("test-jwt-signer-policy"))))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(dummyClaims)))
+                    .andExpect(status().isServiceUnavailable()) // 503
+                    .andExpect(jsonPath("$.message").value("Vault is sealed."));
+
+            // Cleanup: Outer @BeforeEach will unseal for the next test
+        }
+
+        @Test
+        @DisplayName("When Vault Sealed: POST /rotate/{key} should return 503")
+        void postRotate_whenSealed_then503() throws Exception {
+            log.info("Testing POST /rotate when sealed");
+            // Arrange: Seal the vault
+            sealManager.seal();
+            assertThat(sealManager.isSealed()).isTrue();
+
+            // Act & Assert
+            mockMvc.perform(post(String.format(ROTATE_PATH_FORMAT, RSA_KEY_NAME))
+                            // Use a token that *would* normally be allowed (admin)
+                            .with(authentication(createAuthenticationToken(ADMIN_TOKEN, List.of("test-root-policy")))))
+                    .andExpect(status().isServiceUnavailable()) // 503
+                    .andExpect(jsonPath("$.message").value("Vault is sealed."));
+
+            // Cleanup: Outer @BeforeEach will unseal
+        }
+
+        @Test
+        @DisplayName("When Vault Sealed: GET /jwks/{key} should return 503")
+        void getJwks_whenSealed_then503() throws Exception {
+            log.info("Testing GET /jwks when sealed");
+            // Arrange: Ensure the key config exists first, otherwise we might get 404
+            // Rotate once while unsealed (BeforeEach ensures it's unsealed here)
+            log.info("Rotating key '{}' once to ensure config exists before sealing", RSA_KEY_NAME);
+            mockMvc.perform(post(String.format(ROTATE_PATH_FORMAT, RSA_KEY_NAME))
+                            .with(authentication(createAuthenticationToken(ADMIN_TOKEN, List.of("test-root-policy")))))
+                    .andExpect(status().isNoContent());
+
+            // Now seal the vault
+            log.info("Sealing vault for JWKS test");
+            sealManager.seal();
+            assertThat(sealManager.isSealed()).isTrue();
+
+            // Act & Assert
+            mockMvc.perform(get(String.format(JWKS_PATH_FORMAT, RSA_KEY_NAME))
+                            .with(anonymous())) // JWKS is public
+                    .andExpect(status().isServiceUnavailable()) // 503
+                    .andExpect(jsonPath("$.message").value("Vault is sealed."));
+
+            // Cleanup: Outer @BeforeEach will unseal
+        }
+
+        // --- Not Found Tests (404 Not Found) ---
+        // Vault is guaranteed to be unsealed by outer @BeforeEach
+
+        @Test
+        @DisplayName("When Key Not Found: POST /sign/non-existent should return 404")
+        void postSign_whenKeyNotFound_then404() throws Exception {
+            log.info("Testing POST /sign with non-existent key");
+            // Arrange: Vault is unsealed
+            Map<String, Object> dummyClaims = Map.of("sub", "test");
+
+            // Act & Assert
+            mockMvc.perform(post(String.format(SIGN_PATH_FORMAT, NON_EXISTENT_KEY))
+                            // Use a token that would allow signing if the key existed (e.g., admin)
+                            .with(authentication(createAuthenticationToken(ADMIN_TOKEN, List.of("test-root-policy"))))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(dummyClaims)))
+                    .andExpect(status().isNotFound()) // 404
+                    .andExpect(jsonPath("$.message").value("JWT key configuration or version not found: JWT key configuration not found for name: " + NON_EXISTENT_KEY));
+        }
+
+        @Test
+        @DisplayName("When Key Not Found: POST /rotate/non-existent should return 404")
+        void postRotate_whenKeyNotFound_then404() throws Exception {
+            log.info("Testing POST /rotate with non-existent key");
+            // Arrange: Vault is unsealed
+
+            // Act & Assert
+            mockMvc.perform(post(String.format(ROTATE_PATH_FORMAT, NON_EXISTENT_KEY))
+                            // Use admin token
+                            .with(authentication(createAuthenticationToken(ADMIN_TOKEN, List.of("test-root-policy")))))
+                    .andExpect(status().isNotFound()) // 404
+                    .andExpect(jsonPath("$.message").value("JWT key configuration or version not found: JWT key configuration not found for name: " + NON_EXISTENT_KEY));
+        }
+
+        @Test
+        @DisplayName("When Key Not Found: GET /jwks/non-existent should return 404")
+        void getJwks_whenKeyNotFound_then404() throws Exception {
+            log.info("Testing GET /jwks with non-existent key");
+            // Arrange: Vault is unsealed
+
+            // Act & Assert
+            mockMvc.perform(get(String.format(JWKS_PATH_FORMAT, NON_EXISTENT_KEY))
+                            .with(anonymous())) // No token needed for public JWKS endpoint
+                    .andExpect(status().isNotFound()) // 404
+                    .andExpect(jsonPath("$.message").value("JWT key configuration or version not found: JWT key configuration not found for name: " + NON_EXISTENT_KEY));
+        }
+
+        // --- Malformed JSON Test (400 Bad Request) ---
+        // Vault is guaranteed to be unsealed by outer @BeforeEach
+
+        @Test
+        @DisplayName("When Malformed JSON Body: POST /sign/{key} should return 400")
+        void postSign_whenMalformedJson_then400() throws Exception {
+            log.info("Testing POST /sign with malformed JSON");
+            // Arrange: Vault is unsealed
+            // Ensure the key exists first, otherwise we get 404 instead of 400
+            log.info("Rotating key '{}' once to ensure it exists for malformed JSON test", RSA_KEY_NAME);
+            mockMvc.perform(post(String.format(ROTATE_PATH_FORMAT, RSA_KEY_NAME))
+                            .with(authentication(createAuthenticationToken(ADMIN_TOKEN, List.of("test-root-policy")))))
+                    .andExpect(status().isNoContent());
+
+            String malformedJson = "{\"sub\":\"test\", \"scope\": \"read"; // Missing closing quote and brace
+
+            // Act & Assert
+            mockMvc.perform(post(String.format(SIGN_PATH_FORMAT, RSA_KEY_NAME))
+                            // Use a token that allows signing
+                            .with(authentication(createAuthenticationToken(RSA_SIGNING_TOKEN, List.of("test-jwt-signer-policy"))))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(malformedJson)) // Send the broken JSON
+                    .andExpect(status().isBadRequest()); // 400 (Spring Boot's default handler for JSON parsing errors)
+        }
+    }
+    // --- END: Task 5.5 Error Handling Tests ---
+
     // Task 5.6 tests (Audit) will go here...
 
 }
