@@ -3,6 +3,14 @@ package tech.yump.vault.secrets.jwt;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nimbusds.jose.Algorithm;
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.jwk.Curve;
+import com.nimbusds.jose.jwk.ECKey;
+import com.nimbusds.jose.jwk.JWK;
+import com.nimbusds.jose.jwk.JWKSet;
+import com.nimbusds.jose.jwk.KeyUse;
+import com.nimbusds.jose.jwk.RSAKey;
 import io.jsonwebtoken.JwtBuilder;
 import io.jsonwebtoken.Jwts;
 import lombok.RequiredArgsConstructor;
@@ -27,14 +35,20 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
+import java.security.PublicKey;
 import java.security.SecureRandom;
+import java.security.interfaces.ECPublicKey;
+import java.security.interfaces.RSAPublicKey;
 import java.security.spec.ECGenParameterSpec;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
+import java.security.spec.X509EncodedKeySpec;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -500,20 +514,197 @@ public class JwtSecretsEngine implements SecretsEngine {
         }
     }
 
-    // --- Task 36 Method (JWKS - Placeholder, needs full implementation) ---
-    // public Map<String, Object> getJsonWebKeySet(String keyName) throws SecretsEngineException, VaultSealedException {
-    //     log.info("Retrieving JWKS for key '{}'", keyName);
-    //     // 1. Read config to find current version (and potentially previous versions)
-    //     // 2. Loop through relevant versions:
-    //     //    a. Get StoredJwtKeyMaterial for the version
-    //     //    b. Decode public key bytes
-    //     //    c. Reconstruct PublicKey object
-    //     //    d. Convert PublicKey to JWK format (RFC 7517) - requires careful mapping based on key type (RSA/EC)
-    //     //    e. Add 'kid' (key ID, e.g., keyName + "-" + version) and 'alg'
-    //     // 3. Assemble JWKs into a JWK Set JSON structure: {"keys": [jwk1, jwk2, ...]}
-    //     // This requires a library or manual implementation of JWK formatting.
-    //     // --- Audit Log for JWKS access (Task 38 - Optional) ---
-    //     // auditHelper.logInternalEvent("jwt_operation", "get_jwks", "success", null, Map.of("key_name", keyName));
-    //     throw new UnsupportedOperationException("JWKS endpoint not fully implemented yet.");
-    // }
+    /**
+     * Reconstructs a PublicKey object from its X.509 encoded byte representation.
+     *
+     * @param x509Bytes The X.509 encoded public key bytes.
+     * @param keyType   The type of the key (RSA or EC).
+     * @return The reconstructed PublicKey object.
+     * @throws SecretsEngineException If the key reconstruction fails due to invalid encoding or unsupported algorithm.
+     */
+    private PublicKey reconstructPublicKey(byte[] x509Bytes, MssmProperties.JwtKeyType keyType) throws SecretsEngineException {
+        log.debug("Attempting to reconstruct {} public key from X.509 bytes", keyType);
+        try {
+            String algorithm = switch (keyType) {
+                case RSA -> "RSA";
+                case EC -> "EC";
+                // No default needed as JwtKeyType enum is exhaustive for supported types
+            };
+            KeyFactory keyFactory = KeyFactory.getInstance(algorithm);
+            X509EncodedKeySpec keySpec = new X509EncodedKeySpec(x509Bytes);
+            PublicKey publicKey = keyFactory.generatePublic(keySpec);
+            log.debug("Successfully reconstructed {} public key", keyType);
+            return publicKey;
+        } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
+            log.error("Failed to reconstruct {} public key from stored bytes: {}", keyType, e.getMessage(), e);
+            throw new SecretsEngineException("Failed to reconstruct public key.", e);
+        }
+    }
+
+
+    /**
+     * Retrieves the JSON Web Key Set (JWKS) containing the public key(s) for the specified key name.
+     * Currently retrieves only the key for the current version.
+     *
+     * @param keyName The name of the JWT key.
+     * @return A Map representing the JWK Set JSON structure.
+     * @throws JwtKeyNotFoundException If the key configuration or required key material is not found.
+     * @throws VaultSealedException    If the vault is sealed.
+     * @throws SecretsEngineException  If there's an error during key retrieval, reconstruction, or JWK generation.
+     */
+    public Map<String, Object> getJwks(String keyName) throws SecretsEngineException, VaultSealedException {
+        if (sealManager.isSealed()) {
+            log.warn("Cannot retrieve JWKS for key '{}': Vault is sealed.", keyName);
+            throw new VaultSealedException("Vault is sealed");
+        }
+        log.info("Retrieving JWKS for key '{}'", keyName);
+        String operation = "get_jwks"; // For audit context
+
+        try {
+            // 1. Read Config & Get Definition
+            JwtKeyConfig keyConfig = readKeyConfig(keyName)
+                    .orElseThrow(() -> new JwtKeyNotFoundException(keyName));
+            int currentVersion = keyConfig.currentVersion();
+            MssmProperties.JwtKeyDefinition keyDefinition = getKeyDefinition(keyName); // Already throws JwtKeyNotFoundException if needed
+
+            // 2. Get Key Material for Current Version
+            // (Future enhancement: loop through multiple versions here)
+            StoredJwtKeyMaterial keyMaterial = getStoredKeyMaterial(keyName, currentVersion); // Throws if not found
+
+            // 3. Decode Public Key Bytes
+            byte[] publicKeyBytes;
+            try {
+                publicKeyBytes = Base64.getDecoder().decode(keyMaterial.publicKeyB64());
+            } catch (IllegalArgumentException e) {
+                log.error("Failed to Base64 decode public key for key '{}', version {}", keyName, currentVersion, e);
+                throw new SecretsEngineException("Invalid Base64 format for stored public key.", e);
+            }
+
+            // 4. Reconstruct PublicKey
+            PublicKey publicKey = reconstructPublicKey(publicKeyBytes, keyDefinition.type()); // Uses Task 2.1 method
+
+            // 5. Convert PublicKey to JWK
+            String keyId = keyName + "-" + currentVersion;
+            JWSAlgorithm algorithm = determineJwsAlgorithm(keyDefinition);
+            JWK jwk = convertPublicKeyToJwk(publicKey, keyDefinition.type(), keyId, algorithm);
+
+            // 6. Assemble JWK Set
+            List<JWK> jwkList = new ArrayList<>();
+            jwkList.add(jwk);
+            JWKSet jwkSet = new JWKSet(jwkList);
+
+            // 7. Convert to Map and Audit
+            Map<String, Object> jwksMap = jwkSet.toJSONObject(); // Nimbus uses JSONObject which acts like a Map
+            log.info("Successfully generated JWKS for key '{}', version {}", keyName, currentVersion);
+            auditHelper.logInternalEvent(
+                    "jwt_operation", operation, "success", null,
+                    Map.of("key_name", keyName, "versions_included", List.of(currentVersion))
+            );
+            return jwksMap;
+
+        } catch (JwtKeyNotFoundException | VaultSealedException e) {
+            // Log and rethrow specific exceptions
+            log.warn("Failed to retrieve JWKS for key '{}': {}", keyName, e.getMessage());
+            auditHelper.logInternalEvent(
+                    "jwt_operation", operation, "failure", null,
+                    Map.of("key_name", keyName, "error", e.getMessage())
+            );
+            throw e;
+        } catch (SecretsEngineException e) {
+            // Log and rethrow internal engine errors
+            log.error("Secrets engine error retrieving JWKS for key '{}': {}", keyName, e.getMessage(), e);
+            auditHelper.logInternalEvent(
+                    "jwt_operation", operation, "failure", null,
+                    Map.of("key_name", keyName, "error", e.getMessage())
+            );
+            throw e;
+        } catch (Exception e) {
+            // Catch unexpected errors
+            log.error("Unexpected error retrieving JWKS for key '{}': {}", keyName, e.getMessage(), e);
+            auditHelper.logInternalEvent(
+                    "jwt_operation", operation, "failure", null,
+                    Map.of("key_name", keyName, "error", "Unexpected: " + e.getMessage())
+            );
+            throw new SecretsEngineException("An unexpected error occurred while generating JWKS for key: " + keyName, e);
+        }
+    }
+
+    // --- Helper Methods (Add these if they don't exist) ---
+
+    /**
+     * Determines the appropriate JWS algorithm based on the key definition.
+     *
+     * @param keyDefinition The definition of the key.
+     * @return The corresponding JWSAlgorithm.
+     * @throws SecretsEngineException if the key type/parameters are unsupported for JWS.
+     */
+    private JWSAlgorithm determineJwsAlgorithm(MssmProperties.JwtKeyDefinition keyDefinition) throws SecretsEngineException {
+        return switch (keyDefinition.type()) {
+            case RSA -> {
+                // We assume RS256 for RSA >= 2048 as a common default.
+                // Could be refined based on size if needed (RS384, RS512)
+                if (keyDefinition.size() >= 2048) {
+                    yield JWSAlgorithm.RS256;
+                } else {
+                    throw new SecretsEngineException("Unsupported RSA key size for JWS: " + keyDefinition.size());
+                }
+            }
+            case EC -> switch (keyDefinition.curve()) {
+                // Map NIST curve names to JWA algorithm names
+                case "P-256" -> JWSAlgorithm.ES256;
+                case "P-384" -> JWSAlgorithm.ES384;
+                case "P-521" -> JWSAlgorithm.ES512;
+                default -> throw new SecretsEngineException("Unsupported EC curve for JWS: " + keyDefinition.curve());
+            };
+            // Default case should not be reachable if config validation is correct
+            // default -> throw new SecretsEngineException("Unsupported key type for JWS: " + keyDefinition.type());
+        };
+    }
+
+    /**
+     * Converts a java.security.PublicKey into a com.nimbusds.jose.jwk.JWK object.
+     *
+     * @param publicKey The public key to convert.
+     * @param keyType   The type of the key (RSA or EC).
+     * @param keyId     The desired Key ID (kid) for the JWK.
+     * @param algorithm The JWS algorithm associated with this key.
+     * @return The generated JWK object.
+     * @throws SecretsEngineException If the key type is unsupported or conversion fails.
+     */
+    private JWK convertPublicKeyToJwk(PublicKey publicKey, MssmProperties.JwtKeyType keyType, String keyId, Algorithm algorithm) throws SecretsEngineException {
+        try {
+            switch (keyType) {
+                case RSA:
+                    if (!(publicKey instanceof RSAPublicKey rsaPublicKey)) {
+                        throw new SecretsEngineException("Expected RSAPublicKey but got " + publicKey.getClass().getName());
+                    }
+                    return new RSAKey.Builder(rsaPublicKey)
+                            .keyUse(KeyUse.SIGNATURE) // 'use' parameter: sig (signing/verification)
+                            .algorithm(algorithm)     // 'alg' parameter (e.g., RS256)
+                            .keyID(keyId)             // 'kid' parameter
+                            .build();
+                case EC:
+                    if (!(publicKey instanceof ECPublicKey ecPublicKey)) {
+                        throw new SecretsEngineException("Expected ECPublicKey but got " + publicKey.getClass().getName());
+                    }
+                    // Nimbus requires the Curve object, derive it from the key params
+                    Curve curve = Curve.forECParameterSpec(ecPublicKey.getParams());
+                    if (curve == null) {
+                        throw new SecretsEngineException("Could not determine Nimbus Curve for EC key parameters.");
+                    }
+                    return new ECKey.Builder(curve, ecPublicKey)
+                            .keyUse(KeyUse.SIGNATURE)
+                            .algorithm(algorithm)     // 'alg' parameter (e.g., ES256)
+                            .keyID(keyId)
+                            .build();
+                default:
+                    // Should not happen due to enum constraints
+                    throw new SecretsEngineException("Unsupported key type for JWK conversion: " + keyType);
+            }
+        } catch (Exception e) { // Catch potential Nimbus library exceptions too
+            log.error("Failed to convert {} public key (kid: {}) to JWK: {}", keyType, keyId, e.getMessage(), e);
+            throw new SecretsEngineException("Failed to convert public key to JWK format.", e);
+        }
+    }
+
 }

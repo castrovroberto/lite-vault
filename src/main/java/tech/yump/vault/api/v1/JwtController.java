@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -35,6 +36,46 @@ public class JwtController {
     private static final Pattern KEY_NAME_PATTERN = Pattern.compile("key '([^']*)'");
 
     public record JwtResponse(String jwt) {}
+
+    /**
+     * Retrieves the JSON Web Key Set (JWKS) for the specified key name.
+     * This endpoint is typically public and does not require authentication.
+     *
+     * @param keyName The name of the JWT key configuration.
+     * @return A ResponseEntity containing the JWK Set as a Map on success (200 OK),
+     *         or an error response handled by exception handlers (404, 503, 500).
+     */
+    @GetMapping("/jwks/{keyName}") // Maps GET requests to /v1/jwt/jwks/{keyName}
+    public ResponseEntity<Map<String, Object>> getJsonWebKeySet(@PathVariable String keyName) {
+        log.info("Controller: Received request for JWKS for key: {}", keyName);
+        String operation = "get_jwks"; // For audit context
+
+        try {
+            // Call the engine method implemented in Task 2.2
+            Map<String, Object> jwksMap = jwtSecretsEngine.getJwks(keyName);
+            log.info("Controller: Successfully retrieved JWKS for key '{}'", keyName);
+
+            // Audit success (HTTP level)
+            auditHelper.logHttpEvent(
+                    "jwt_operation",
+                    operation,
+                    "success",
+                    HttpStatus.OK.value(),
+                    null, // No error message on success
+                    Map.of("key_name", keyName)
+            );
+
+            // Return the JWKS map with 200 OK status
+            return ResponseEntity.ok(jwksMap);
+
+        } catch (Exception e) {
+            // Re-throw the exception to be caught by the @ExceptionHandler methods
+            // defined in this controller. The handlers will log the failure audit event
+            // and return the appropriate error response (404, 503, 500).
+            log.debug("Controller: Exception occurred during JWKS retrieval for key '{}', delegating to handler.", keyName, e);
+            throw e;
+        }
+    }
 
     @PostMapping("/sign/{keyName}")
     public ResponseEntity<JwtResponse> signJwt(

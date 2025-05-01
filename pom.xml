@@ -116,6 +116,11 @@
       <artifactId>postgresql</artifactId>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>com.nimbusds</groupId>
+      <artifactId>nimbus-jose-jwt</artifactId>
+      <version>9.39.1</version> <!-- Use the latest appropriate version -->
+    </dependency>
 
   </dependencies>
 
