@@ -119,8 +119,6 @@ public class SealManager {
     this.masterKey.set(null); // Clear the key reference
     this.currentStatus.set(SealStatus.SEALED);
     log.info("Vault is now SEALED.");
-    // Suggest GC, though no guarantee it runs immediately or clears the actual old key object memory
-    System.gc();
   }
 
   /**

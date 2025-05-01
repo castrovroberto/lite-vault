@@ -85,10 +85,16 @@ public class PostgresSecretsEngine implements DynamicSecretsEngine {
     /**
      * Replaces placeholders in SQL statements.
      */
-    private List<String> prepareSqlStatements(List<String> statements, String username, String password) {
+    private List<String> prepareSqlStatements(
+            List<String> statements,
+            String username,
+            String password) {
+        String quotedUsername = quotePostgresIdentifier(username);
+        String escapedPassword = escapePostgresStringLiteral(password);
+
         return statements.stream()
-                .map(sql -> sql.replace("{{username}}", username)
-                        .replace("{{password}}", password))
+                .map(sql -> sql.replace("{{username}}", quotedUsername)
+                        .replace("{{password}}", escapedPassword))
                 .toList();
     }
 
@@ -226,8 +232,9 @@ public class PostgresSecretsEngine implements DynamicSecretsEngine {
             throw new SecretsEngineException("Role definition '" + lease.roleName() + "' not found, cannot determine revocation SQL for lease " + leaseId);
         }
 
+        String quotedUsername = quotePostgresIdentifier(username);
         List<String> revocationSqlStatements = roleDefinition.revocationStatements().stream()
-                .map(sql -> sql.replace("{{username}}", username))
+                .map(sql -> sql.replace("{{username}}", quotedUsername))
                 .toList();
 
         log.debug("Executing revocation SQL statements for lease '{}', username '{}'", leaseId, username);
@@ -269,4 +276,44 @@ public class PostgresSecretsEngine implements DynamicSecretsEngine {
             throw new SecretsEngineException("Failed to execute credential revocation SQL for lease: " + leaseId, e);
         }
     }
+
+    // Inside PostgresSecretsEngine.java
+
+    /**
+     * Quotes a PostgreSQL identifier (like a username) correctly.
+     * Handles embedded double quotes and wraps the result in double quotes.
+     * Example: my"User -> "my""User"
+     * Example: my_user -> "my_user" (quoting is safe even if not strictly needed)
+     *
+     * @param identifier The identifier to quote.
+     * @return The safely quoted identifier, ready for insertion into SQL.
+     */
+    private String quotePostgresIdentifier(String identifier) {
+        if (identifier == null) {
+            // Or throw an exception, depending on how you want to handle nulls
+            return "\"\"";
+        }
+        // Replace all occurrences of " with ""
+        String escapedIdentifier = identifier.replace("\"", "\"\"");
+        // Wrap in double quotes
+        return "\"" + escapedIdentifier + "\"";
+    }
+
+    /**
+     * Escapes a string literal for safe inclusion within single quotes in PostgreSQL SQL.
+     * Handles embedded single quotes by doubling them.
+     * Example: pass'word -> pass''word
+     *
+     * @param value The string value to escape.
+     * @return The safely escaped string, ready for insertion within single quotes ('...') in SQL.
+     */
+    private String escapePostgresStringLiteral(String value) {
+        if (value == null) {
+            // Or throw an exception, or return empty string? Returning empty might be safer.
+            return "";
+        }
+        // Replace all occurrences of ' with ''
+        return value.replace("'", "''");
+    }
+
 }
