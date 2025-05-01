@@ -29,6 +29,10 @@ import tech.yump.vault.storage.StorageException;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.KeyFactory;
 import java.security.KeyPair;
@@ -47,11 +51,14 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 @Slf4j
@@ -64,6 +71,9 @@ public class JwtSecretsEngine implements SecretsEngine {
     private final SealManager sealManager;
     private final AuditHelper auditHelper;
     private final ObjectMapper objectMapper;
+
+    private static final String VERSIONS_DIR_FORMAT = "jwt/keys/%s/versions";
+    private static final Pattern VERSION_FILE_PATTERN = Pattern.compile("^(\\d+)\\.json$");
 
     // --- DTOs ---
     record StoredJwtKeyMaterial(String publicKeyB64, String encryptedPrivateKeyB64) {}
@@ -566,14 +576,13 @@ public class JwtSecretsEngine implements SecretsEngine {
         }
     }
 
-
     /**
-     * Retrieves the JSON Web Key Set (JWKS) containing the public key(s) for the specified key name.
-     * Currently, retrieves only the key for the current version.
+     * Retrieves the JSON Web Key Set (JWKS) containing the public keys for *all*
+     * valid, stored versions of the specified key name.
      *
      * @param keyName The name of the JWT key.
      * @return A Map representing the JWK Set JSON structure.
-     * @throws JwtKeyNotFoundException If the key configuration or required key material is not found.
+     * @throws JwtKeyNotFoundException If the key configuration is not found (needed for type info) or no valid versions exist.
      * @throws VaultSealedException    If the vault is sealed.
      * @throws SecretsEngineException  If there's an error during key retrieval, reconstruction, or JWK generation.
      */
@@ -582,62 +591,116 @@ public class JwtSecretsEngine implements SecretsEngine {
             log.warn("Cannot retrieve JWKS for key '{}': Vault is sealed.", keyName);
             throw new VaultSealedException("Vault is sealed");
         }
-        log.info("Retrieving JWKS for key '{}'", keyName);
+        log.info("Retrieving JWKS for all versions of key '{}'", keyName);
         String operation = "get_jwks"; // For audit context
 
+        List<JWK> jwkList = new ArrayList<>();
+        List<Integer> includedVersions = new ArrayList<>(); // For audit log
+
         try {
-            // 1. Read Config & Get Definition
-            JwtKeyConfig keyConfig = readKeyConfig(keyName)
-                    .orElseThrow(() -> new JwtKeyNotFoundException(keyName));
-            int currentVersion = keyConfig.currentVersion();
-            MssmProperties.JwtKeyDefinition keyDefinition = getKeyDefinition(keyName); // Already throws JwtKeyNotFoundException if needed
+            // 1. Get Key Definition (needed for type, algorithm) - Throws if keyName invalid
+            MssmProperties.JwtKeyDefinition keyDefinition = getKeyDefinition(keyName);
+            JWSAlgorithm commonAlgorithm = determineJwsAlgorithm(keyDefinition); // Determine algorithm once
 
-            // 2. Get Key Material for Current Version
-            // (Future enhancement: loop through multiple versions here)
-            StoredJwtKeyMaterial keyMaterial = getStoredKeyMaterial(keyName, currentVersion); // Throws if not found
+            // 2. Determine Storage Path for Versions
+            // Need the base storage path to resolve relative paths correctly
+            String storageBasePath = properties.storage().filesystem().path(); // Get base path from properties
+            if (storageBasePath == null || storageBasePath.isBlank()) {
+                throw new SecretsEngineException("Filesystem storage path is not configured.");
+            }
+            Path versionsDirectoryPath = Paths.get(storageBasePath, String.format(VERSIONS_DIR_FORMAT, keyName));
+            log.debug("Looking for key versions in directory: {}", versionsDirectoryPath);
 
-            // 3. Decode Public Key Bytes
-            byte[] publicKeyBytes;
-            try {
-                publicKeyBytes = Base64.getDecoder().decode(keyMaterial.publicKeyB64());
-            } catch (IllegalArgumentException e) {
-                log.error("Failed to Base64 decode public key for key '{}', version {}", keyName, currentVersion, e);
-                throw new SecretsEngineException("Invalid Base64 format for stored public key.", e);
+            if (!Files.isDirectory(versionsDirectoryPath)) {
+                log.warn("Versions directory not found for key '{}' at path: {}. Returning empty JWKSet.", keyName, versionsDirectoryPath);
+                // Depending on requirements, you might throw JwtKeyNotFoundException here
+                // Or return an empty set if a key *could* exist but has no versions yet.
+                // Let's throw for consistency with finding *no* versions.
+                throw new JwtKeyNotFoundException("No key versions found for key: " + keyName);
             }
 
-            // 4. Reconstruct PublicKey
-            PublicKey publicKey = reconstructPublicKey(publicKeyBytes, keyDefinition.type()); // Uses Task 2.1 method
+            // 3. Iterate through version files in the storage directory
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(versionsDirectoryPath, "*.json")) {
+                for (Path versionFilePath : stream) {
+                    String filename = versionFilePath.getFileName().toString();
+                    Matcher matcher = VERSION_FILE_PATTERN.matcher(filename);
 
-            // 5. Convert PublicKey to JWK
-            String keyId = keyName + "-" + currentVersion;
-            JWSAlgorithm algorithm = determineJwsAlgorithm(keyDefinition);
-            JWK jwk = convertPublicKeyToJwk(publicKey, keyDefinition.type(), keyId, algorithm);
+                    if (matcher.matches()) {
+                        int version = Integer.parseInt(matcher.group(1));
+                        log.debug("Found potential version file: {}, extracted version: {}", filename, version);
+                        String keyId = keyName + "-" + version;
 
-            // 6. Assemble JWK Set
-            List<JWK> jwkList = new ArrayList<>();
-            jwkList.add(jwk);
+                        try {
+                            // 4. Get Key Material for this Version
+                            StoredJwtKeyMaterial keyMaterial = getStoredKeyMaterial(keyName, version); // Throws if specific version missing/error
+
+                            // 5. Decode Public Key Bytes
+                            byte[] publicKeyBytes = Base64.getDecoder().decode(keyMaterial.publicKeyB64());
+
+                            // 6. Reconstruct PublicKey
+                            PublicKey publicKey = reconstructPublicKey(publicKeyBytes, keyDefinition.type());
+
+                            // 7. Convert PublicKey to JWK
+                            JWK jwk = convertPublicKeyToJwk(publicKey, keyDefinition.type(), keyId, commonAlgorithm);
+
+                            // 8. Add to list
+                            jwkList.add(jwk);
+                            includedVersions.add(version);
+                            log.debug("Successfully processed and added JWK for key '{}', version {}", keyName, version);
+
+                        } catch (JwtKeyNotFoundException e) {
+                            log.warn("Key material not found for key '{}', version {}. Skipping this version for JWKS.", keyName, version, e);
+                            // Continue to next version
+                        } catch (IllegalArgumentException e) {
+                            log.warn("Failed to Base64 decode public key for key '{}', version {}. Skipping this version for JWKS.", keyName, version, e);
+                            // Continue to next version
+                        } catch (SecretsEngineException e) {
+                            log.warn("Failed to reconstruct or convert public key for key '{}', version {}. Skipping this version for JWKS.", keyName, version, e);
+                            // Continue to next version
+                        }
+                        // Let VaultSealedException propagate upwards immediately if it occurs during getStoredKeyMaterial
+                    } else {
+                        log.warn("Skipping file '{}' in versions directory for key '{}' as it does not match expected pattern.", filename, keyName);
+                    }
+                }
+            } catch (IOException e) {
+                log.error("Error listing version files in directory {}: {}", versionsDirectoryPath, e.getMessage(), e);
+                throw new SecretsEngineException("Failed to list key versions from storage for key: " + keyName, e);
+            }
+
+            // 9. Check if any keys were found
+            if (jwkList.isEmpty()) {
+                log.warn("No valid key versions found or processed for key '{}'. Returning empty JWKSet.", keyName);
+                // Throw exception as per earlier decision
+                throw new JwtKeyNotFoundException("No valid key versions found for key: " + keyName);
+            }
+
+            // 10. Assemble JWK Set
+            // Optional: Sort JWKs by version number (descending is common)
+            jwkList.sort(Comparator.comparing(jwk -> {
+                Matcher m = Pattern.compile(".*-(\\d+)$").matcher(jwk.getKeyID());
+                return m.matches() ? -Integer.parseInt(m.group(1)) : 0; // Negative for descending
+            }));
             JWKSet jwkSet = new JWKSet(jwkList);
 
-            // 7. Convert to Map and Audit
-            Map<String, Object> jwksMap = jwkSet.toJSONObject(); // Nimbus uses JSONObject which acts like a Map
-            log.info("Successfully generated JWKS for key '{}', version {}", keyName, currentVersion);
+            // 11. Convert to Map and Audit
+            Map<String, Object> jwksMap = jwkSet.toJSONObject();
+            log.info("Successfully generated JWKS for key '{}', including versions: {}", keyName, includedVersions);
             auditHelper.logInternalEvent(
                     "jwt_operation", operation, "success", null,
-                    Map.of("key_name", keyName, "versions_included", List.of(currentVersion))
+                    Map.of("key_name", keyName, "versions_included", includedVersions) // Log included versions
             );
             return jwksMap;
 
         } catch (JwtKeyNotFoundException | VaultSealedException e) {
-            // Log and rethrow specific exceptions
-            log.warn("Failed to retrieve JWKS for key '{}': {}", keyName, e.getMessage());
+            // Log and rethrow specific exceptions (already logged where they occur)
             auditHelper.logInternalEvent(
                     "jwt_operation", operation, "failure", null,
                     Map.of("key_name", keyName, "error", e.getMessage())
             );
             throw e;
         } catch (SecretsEngineException e) {
-            // Log and rethrow internal engine errors
-            log.error("Secrets engine error retrieving JWKS for key '{}': {}", keyName, e.getMessage(), e);
+            // Log and rethrow internal engine errors (already logged where they occur)
             auditHelper.logInternalEvent(
                     "jwt_operation", operation, "failure", null,
                     Map.of("key_name", keyName, "error", e.getMessage())
@@ -653,6 +716,7 @@ public class JwtSecretsEngine implements SecretsEngine {
             throw new SecretsEngineException("An unexpected error occurred while generating JWKS for key: " + keyName, e);
         }
     }
+
 
     // --- Helper Methods (Add these if they don't exist) ---
 

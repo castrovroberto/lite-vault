@@ -74,7 +74,7 @@ public class SecurityConfig {
               .addFilterBefore(staticTokenAuthFilter(), UsernamePasswordAuthenticationFilter.class)
               // 2. Add Policy Enforcement Filter *after* authentication
               .addFilterAfter(policyEnforcementFilter(), StaticTokenAuthFilter.class)
-              .authorizeHttpRequests(authz -> authz
+              .authorizeHttpRequests(authorize -> authorize
                       .requestMatchers("/sys/seal-status", "/").permitAll()
                       .requestMatchers("/v1/jwt/jwks/**").permitAll()
                       .requestMatchers("/actuator/**").permitAll()
