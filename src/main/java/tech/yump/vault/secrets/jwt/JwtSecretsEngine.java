@@ -66,8 +66,8 @@ public class JwtSecretsEngine implements SecretsEngine {
     private final ObjectMapper objectMapper;
 
     // --- DTOs ---
-    private record StoredJwtKeyMaterial(String publicKeyB64, String encryptedPrivateKeyB64) {}
-    private record JwtKeyConfig(int currentVersion, Duration rotationPeriod, Instant lastRotationTime) {}
+    record StoredJwtKeyMaterial(String publicKeyB64, String encryptedPrivateKeyB64) {}
+    record JwtKeyConfig(int currentVersion, Duration rotationPeriod, Instant lastRotationTime) {}
     // Removed PublicKeyInfo DTO as JWKS generation needs more context
 
     // --- Exceptions ---
@@ -83,7 +83,7 @@ public class JwtSecretsEngine implements SecretsEngine {
 
     private static final String KEY_MATERIAL_PATH_FORMAT = "jwt/keys/%s/versions/%d";
     private static final String KEY_CONFIG_PATH_FORMAT = "jwt/keys/%s/config";
-    private static final TypeReference<StoredJwtKeyMaterial> KEY_MATERIAL_TYPE_REF = new TypeReference<>() {}; // For deserialization
+    static final TypeReference<StoredJwtKeyMaterial> KEY_MATERIAL_TYPE_REF = new TypeReference<>() {}; // For deserialization
 
     // --- Task 33 Method (generateAndStoreKeyPair) ---
     public void generateAndStoreKeyPair(String keyName, int version) throws SecretsEngineException, VaultSealedException {
@@ -485,7 +485,14 @@ public class JwtSecretsEngine implements SecretsEngine {
                 case EC:
                     algorithm = "EC";
                     keyPairGenerator = KeyPairGenerator.getInstance(algorithm);
-                    ECGenParameterSpec ecSpec = new ECGenParameterSpec(keyDefinition.curve());
+                    String curveNameFromConfig = keyDefinition.curve();
+                    String javaCurveName = switch (curveNameFromConfig) {
+                        case "P-256" -> "secp256r1";
+                        case "P-384" -> "secp384r1"; // Add if you support P-384
+                        case "P-521" -> "secp521r1"; // Add if you support P-521
+                        default -> throw new InvalidAlgorithmParameterException("Unsupported or unknown curve name configured: " + curveNameFromConfig);
+                    };
+                    ECGenParameterSpec ecSpec = new ECGenParameterSpec(javaCurveName);
                     keyPairGenerator.initialize(ecSpec, new SecureRandom());
                     log.debug("Generating EC key pair with curve {}", keyDefinition.curve());
                     break;
