@@ -8,7 +8,7 @@
 
 ### Phase 4 Atomic Tasks (31-40)
 
-#### 31. [ ] Implement JWT Secrets Engine Core
+#### 31. [x] Implement JWT Secrets Engine Core
 - **Description:**
     - Create `JwtSecretsEngine.java` implementing `SecretsEngine` (or a more specific interface if applicable).
     - Add necessary dependencies if any (e.g., libraries for JWT creation like `jjwt`).
@@ -16,7 +16,7 @@
 - **Rationale:**
     - Creates the component responsible for JWT key management.
 
-#### 32. [ ] Configure JWT Engine via Properties
+#### 32. [x] Configure JWT Engine via Properties
 - **Description:**
     - Update `MssmProperties` to include configuration for the JWT engine:
         - Define named key configurations (e.g., `mssm.jwt.keys.my_api_key: { type: RSA, size: 2048, rotation_period: "7d" }`).
@@ -26,7 +26,7 @@
 - **Rationale:**
     - Allows defining different keys for different purposes with specific parameters (F-JWT-300).
 
-#### 33. [ ] Implement Key Generation and Secure Storage
+#### 33. [x] Implement Key Generation and Secure Storage
 - **Description:**
     - Implement logic within `JwtSecretsEngine` to generate cryptographic key pairs (e.g., RSA, EC) based on configuration.
     - Encrypt the *private key* using `EncryptionService` before storing it.
@@ -34,7 +34,7 @@
 - **Rationale:**
     - Securely generates and persists cryptographic keys (F-JWT-300). Ensures private keys are encrypted at rest.
 
-#### 34. [ ] Implement Key Versioning Logic
+#### 34. [x] Implement Key Versioning Logic
 - **Description:**
     - Implement logic to manage multiple versions of a key (e.g., `current`, `next`, `previous`).
     - When a new key is generated (initially or during rotation), assign it a new version number.
@@ -42,7 +42,7 @@
 - **Rationale:**
     - Supports graceful key rotation by allowing verification using older keys (F-JWT-310).
 
-#### 35. [ ] Implement JWT Signing API Endpoint
+#### 35. [x] Implement JWT Signing API Endpoint
 - **Description:**
     - Implement a `JwtController` (e.g., under `/v1/jwt`).
     - Create endpoint `POST /sign/{key_name}` that accepts a JSON body containing claims.
@@ -54,7 +54,7 @@
 - **Rationale:**
     - Provides the core functionality of signing JWTs using managed keys (F-JWT-320).
 
-#### 36. [ ] Implement JWKS Public Key Endpoint
+#### 36. [x] Implement JWKS Public Key Endpoint
 - **Description:**
     - Create endpoint `GET /jwks/{key_name}` in `JwtController`.
     - Retrieve the *public* keys for the specified `key_name` (e.g., current and possibly previous versions needed for verification).
@@ -63,7 +63,7 @@
 - **Rationale:**
     - Allows external services to retrieve public keys for verifying JWT signatures (F-JWT-330).
 
-#### 37. [ ] Implement Manual Key Rotation API Endpoint
+#### 37. [x] Implement Manual Key Rotation API Endpoint
 - **Description:**
     - Create an admin-only endpoint `POST /rotate/{key_name}` in `JwtController`.
     - Trigger the `JwtSecretsEngine` to:
