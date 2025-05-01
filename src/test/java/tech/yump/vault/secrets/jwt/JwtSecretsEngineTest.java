@@ -61,7 +61,6 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doThrow;
@@ -379,7 +378,8 @@ class JwtSecretsEngineTest {
         when(encryptionService.encrypt(any(byte[].class))).thenReturn(encryptedPrivateKeyNonceAndCiphertext);
 
         // Mock ObjectMapper to throw
-        JsonProcessingException thrownException = new JsonProcessingException("JSON failed test") {}; // Anonymous class needed
+        JsonProcessingException thrownException = new JsonProcessingException("JSON failed test") {
+        }; // Anonymous class needed
         when(objectMapper.writeValueAsBytes(any(JwtSecretsEngine.StoredJwtKeyMaterial.class))).thenThrow(thrownException);
 
         // Act & Assert
@@ -698,7 +698,8 @@ class JwtSecretsEngineTest {
             byte[] invalidConfigJson = "invalid json".getBytes();
             when(encryptionService.decrypt(eq(encryptedConfigBytes))).thenReturn(invalidConfigJson);
             // Simulate ObjectMapper failure
-            IOException ioException = new JsonProcessingException("Bad JSON") {};
+            IOException ioException = new JsonProcessingException("Bad JSON") {
+            };
             when(objectMapper.readValue(eq(invalidConfigJson), eq(JwtKeyConfig.class))).thenThrow(ioException);
 
 
@@ -722,7 +723,8 @@ class JwtSecretsEngineTest {
             byte[] invalidMaterialJson = "invalid json".getBytes();
             when(encryptionService.decrypt(eq(encryptedMaterialBytes))).thenReturn(invalidMaterialJson);
             // Simulate ObjectMapper failure
-            IOException ioException = new JsonProcessingException("Bad JSON") {};
+            IOException ioException = new JsonProcessingException("Bad JSON") {
+            };
             when(objectMapper.readValue(eq(invalidMaterialJson), eq(JwtSecretsEngine.KEY_MATERIAL_TYPE_REF))).thenThrow(ioException);
 
             // Act & Assert
@@ -1078,12 +1080,466 @@ class JwtSecretsEngineTest {
 
     // --- End Task 3.7 ---
 
-    @Test
-    void getJwks() {
-        fail("Not yet implemented");
+
+    // --- Task 3.8: getJwks Tests ---
+
+    @Nested
+    @DisplayName("getJwks Tests")
+    class GetJwksTests {
+
+        private final String keyNameRsa = "test-rsa-key";
+        private final String keyNameEc = "test-ec-key";
+        private final int version = 1;
+        private final String configPathRsa = String.format("jwt/keys/%s/config", keyNameRsa);
+        private final String configPathEc = String.format("jwt/keys/%s/config", keyNameEc);
+        private final String materialPathRsa = String.format("jwt/keys/%s/versions/%d", keyNameRsa, version);
+        private final String materialPathEc = String.format("jwt/keys/%s/versions/%d", keyNameEc, version);
+        private final String keyIdRsa = keyNameRsa + "-" + version;
+        private final String keyIdEc = keyNameEc + "-" + version;
+
+        private JwtKeyDefinition rsaDefinition;
+        private JwtKeyDefinition ecDefinition;
+        private JwtKeyConfig rsaConfig;
+        private JwtKeyConfig ecConfig;
+        private StoredJwtKeyMaterial rsaMaterial;
+        private StoredJwtKeyMaterial ecMaterial;
+        private byte[] rsaConfigJsonBytes;
+        private byte[] ecConfigJsonBytes;
+        private byte[] rsaMaterialJsonBytes;
+        private byte[] ecMaterialJsonBytes;
+        private byte[] encryptedRsaConfigBytes;
+        private byte[] encryptedEcConfigBytes;
+        private byte[] encryptedRsaMaterialBytes;
+        private byte[] encryptedEcMaterialBytes;
+        private PublicKey rsaPublicKey;
+        private PublicKey ecPublicKey;
+        private byte[] rsaPublicKeyBytes; // X.509 format
+        private byte[] ecPublicKeyBytes;  // X.509 format
+
+        EncryptedData encryptedRsaMaterialData;
+
+        @BeforeEach
+        void getJwksSetup() throws Exception {
+            // --- Common Arrange ---
+            byte[] nonce = new byte[EncryptionService.NONCE_LENGTH_BYTE];
+
+            // Generate real keys to get valid public key bytes
+            KeyPair rsaKeyPair = generateTestRsaKeyPair();
+            rsaPublicKey = rsaKeyPair.getPublic();
+            rsaPublicKeyBytes = rsaPublicKey.getEncoded();
+
+            KeyPair ecKeyPair = generateTestEcKeyPair();
+            ecPublicKey = ecKeyPair.getPublic();
+            ecPublicKeyBytes = ecPublicKey.getEncoded();
+
+            // Definitions
+            rsaDefinition = new JwtKeyDefinition(JwtKeyType.RSA, 2048, null, Duration.ofDays(90));
+            ecDefinition = new JwtKeyDefinition(JwtKeyType.EC, null, "P-256", Duration.ofDays(90));
+
+            // Configs
+            rsaConfig = new JwtKeyConfig(version, rsaDefinition.rotationPeriod(), Instant.now().minus(Duration.ofDays(10)));
+            ecConfig = new JwtKeyConfig(version, ecDefinition.rotationPeriod(), Instant.now().minus(Duration.ofDays(10)));
+
+            // Materials (using real public keys)
+            rsaMaterial = new StoredJwtKeyMaterial(Base64.getEncoder().encodeToString(rsaPublicKeyBytes), "dummyEncryptedPrivateKeyB64");
+            ecMaterial = new StoredJwtKeyMaterial(Base64.getEncoder().encodeToString(ecPublicKeyBytes), "dummyEncryptedPrivateKeyB64");
+
+            // JSON Bytes (use mock mapper for consistency)
+            rsaConfigJsonBytes = "{\"currentVersion\":1,...}".getBytes(); // Placeholder
+            ecConfigJsonBytes = "{\"currentVersion\":1,...}".getBytes(); // Placeholder
+            rsaMaterialJsonBytes = "{\"publicKeyB64\":\"rsa...\"}".getBytes(); // Placeholder
+            ecMaterialJsonBytes = "{\"publicKeyB64\":\"ec...\"}".getBytes(); // Placeholder
+            lenient().when(objectMapper.writeValueAsBytes(eq(rsaConfig))).thenReturn(rsaConfigJsonBytes);
+            lenient().when(objectMapper.writeValueAsBytes(eq(ecConfig))).thenReturn(ecConfigJsonBytes);
+            lenient().when(objectMapper.writeValueAsBytes(eq(rsaMaterial))).thenReturn(rsaMaterialJsonBytes);
+            lenient().when(objectMapper.writeValueAsBytes(eq(ecMaterial))).thenReturn(ecMaterialJsonBytes);
+
+
+            // Encrypted Bytes
+            byte[] cipherRsaConfig = "encRsaConf".getBytes();
+            byte[] cipherEcConfig = "encEcConf".getBytes();
+            byte[] cipherRsaMaterial = "encRsaMat".getBytes();
+            byte[] cipherEcMaterial = "encEcMat".getBytes();
+            encryptedRsaConfigBytes = ByteBuffer.allocate(nonce.length + cipherRsaConfig.length).put(nonce).put(cipherRsaConfig).array();
+            encryptedEcConfigBytes = ByteBuffer.allocate(nonce.length + cipherEcConfig.length).put(nonce).put(cipherEcConfig).array();
+            encryptedRsaMaterialBytes = ByteBuffer.allocate(nonce.length + cipherRsaMaterial.length).put(nonce).put(cipherRsaMaterial).array();
+            encryptedEcMaterialBytes = ByteBuffer.allocate(nonce.length + cipherEcMaterial.length).put(nonce).put(cipherEcMaterial).array();
+
+            EncryptedData encryptedRsaConfigData = new EncryptedData(nonce, cipherRsaConfig);
+            EncryptedData encryptedEcConfigData = new EncryptedData(nonce, cipherEcConfig);
+            encryptedRsaMaterialData = new EncryptedData(nonce, cipherRsaMaterial);
+            EncryptedData encryptedEcMaterialData = new EncryptedData(nonce, cipherEcMaterial);
+
+
+            // --- Default Mock Behaviors (Success Path - use lenient) ---
+            JwtProperties jwtProperties = mock(JwtProperties.class);
+            lenient().when(properties.jwt()).thenReturn(jwtProperties);
+            lenient().when(jwtProperties.keys()).thenReturn(Map.of(keyNameRsa, rsaDefinition, keyNameEc, ecDefinition));
+
+            // RSA Path Mocks
+            lenient().when(storageBackend.get(eq(configPathRsa))).thenReturn(Optional.of(encryptedRsaConfigData));
+            lenient().when(encryptionService.decrypt(eq(encryptedRsaConfigBytes))).thenReturn(rsaConfigJsonBytes);
+            lenient().when(objectMapper.readValue(eq(rsaConfigJsonBytes), eq(JwtKeyConfig.class))).thenReturn(rsaConfig);
+            lenient().when(storageBackend.get(eq(materialPathRsa))).thenReturn(Optional.of(encryptedRsaMaterialData));
+            lenient().when(encryptionService.decrypt(eq(encryptedRsaMaterialBytes))).thenReturn(rsaMaterialJsonBytes);
+            lenient().when(objectMapper.readValue(eq(rsaMaterialJsonBytes), eq(JwtSecretsEngine.KEY_MATERIAL_TYPE_REF))).thenReturn(rsaMaterial);
+
+            // EC Path Mocks
+            lenient().when(storageBackend.get(eq(configPathEc))).thenReturn(Optional.of(encryptedEcConfigData));
+            lenient().when(encryptionService.decrypt(eq(encryptedEcConfigBytes))).thenReturn(ecConfigJsonBytes);
+            lenient().when(objectMapper.readValue(eq(ecConfigJsonBytes), eq(JwtKeyConfig.class))).thenReturn(ecConfig);
+            lenient().when(storageBackend.get(eq(materialPathEc))).thenReturn(Optional.of(encryptedEcMaterialData));
+            lenient().when(encryptionService.decrypt(eq(encryptedEcMaterialBytes))).thenReturn(ecMaterialJsonBytes);
+            lenient().when(objectMapper.readValue(eq(ecMaterialJsonBytes), eq(JwtSecretsEngine.KEY_MATERIAL_TYPE_REF))).thenReturn(ecMaterial);
+        }
+
+        @Test
+        @DisplayName("Success: Should return JWKS with single RSA key")
+        void getJwks_successRsa() throws Exception {
+            // Arrange (Defaults from setup)
+
+            // Act
+            Map<String, Object> jwksMap = jwtSecretsEngine.getJwks(keyNameRsa);
+
+            // Assert
+            assertThat(jwksMap).isNotNull();
+            assertThat(jwksMap).containsKey("keys");
+            assertThat(jwksMap.get("keys")).isInstanceOf(List.class);
+            @SuppressWarnings("unchecked") // Safe cast after instanceof check
+            List<Map<String, Object>> keysList = (List<Map<String, Object>>) jwksMap.get("keys");
+            assertThat(keysList).hasSize(1);
+
+            Map<String, Object> jwk = keysList.get(0);
+            assertThat(jwk)
+                    .containsEntry("kty", "RSA")
+                    .containsEntry("use", "sig")
+                    .containsEntry("kid", keyIdRsa)
+                    .containsEntry("alg", "RS256") // Based on determineJwsAlgorithm logic
+                    .containsKey("n") // RSA modulus
+                    .containsKey("e"); // RSA exponent
+            assertThat(jwk.get("n")).isInstanceOf(String.class);
+            assertThat(jwk.get("e")).isInstanceOf(String.class);
+
+            // Verify interactions
+            verify(storageBackend).get(eq(configPathRsa));
+            verify(encryptionService).decrypt(eq(encryptedRsaConfigBytes));
+            verify(objectMapper).readValue(eq(rsaConfigJsonBytes), eq(JwtKeyConfig.class));
+            verify(storageBackend).get(eq(materialPathRsa));
+            verify(encryptionService).decrypt(eq(encryptedRsaMaterialBytes));
+            verify(objectMapper).readValue(eq(rsaMaterialJsonBytes), eq(JwtSecretsEngine.KEY_MATERIAL_TYPE_REF));
+
+            // Verify Audit Log
+            ArgumentCaptor<Map<String, Object>> auditCaptor = ArgumentCaptor.forClass(Map.class);
+            verify(auditHelper).logInternalEvent(
+                    eq("jwt_operation"), eq("get_jwks"), eq("success"), isNull(), auditCaptor.capture()
+            );
+            assertThat(auditCaptor.getValue())
+                    .containsEntry("key_name", keyNameRsa)
+                    .containsEntry("versions_included", List.of(version));
+        }
+
+        @Test
+        @DisplayName("Success: Should return JWKS with single EC key")
+        void getJwks_successEc() throws Exception {
+            // Arrange (Defaults from setup)
+
+            // Act
+            Map<String, Object> jwksMap = jwtSecretsEngine.getJwks(keyNameEc);
+
+            // Assert
+            assertThat(jwksMap).isNotNull();
+            assertThat(jwksMap).containsKey("keys");
+            assertThat(jwksMap.get("keys")).isInstanceOf(List.class);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> keysList = (List<Map<String, Object>>) jwksMap.get("keys");
+            assertThat(keysList).hasSize(1);
+
+            Map<String, Object> jwk = keysList.get(0);
+            assertThat(jwk)
+                    .containsEntry("kty", "EC")
+                    .containsEntry("use", "sig")
+                    .containsEntry("kid", keyIdEc)
+                    .containsEntry("alg", "ES256") // Based on determineJwsAlgorithm logic
+                    .containsEntry("crv", "P-256") // Based on definition and conversion logic
+                    .containsKey("x") // EC x-coordinate
+                    .containsKey("y"); // EC y-coordinate
+            assertThat(jwk.get("x")).isInstanceOf(String.class);
+            assertThat(jwk.get("y")).isInstanceOf(String.class);
+
+            // Verify interactions
+            verify(storageBackend).get(eq(configPathEc));
+            verify(encryptionService).decrypt(eq(encryptedEcConfigBytes));
+            verify(objectMapper).readValue(eq(ecConfigJsonBytes), eq(JwtKeyConfig.class));
+            verify(storageBackend).get(eq(materialPathEc));
+            verify(encryptionService).decrypt(eq(encryptedEcMaterialBytes));
+            verify(objectMapper).readValue(eq(ecMaterialJsonBytes), eq(JwtSecretsEngine.KEY_MATERIAL_TYPE_REF));
+
+            // Verify Audit Log
+            ArgumentCaptor<Map<String, Object>> auditCaptor = ArgumentCaptor.forClass(Map.class);
+            verify(auditHelper).logInternalEvent(
+                    eq("jwt_operation"), eq("get_jwks"), eq("success"), isNull(), auditCaptor.capture()
+            );
+            assertThat(auditCaptor.getValue())
+                    .containsEntry("key_name", keyNameEc)
+                    .containsEntry("versions_included", List.of(version));
+        }
+
+        @Test
+        @DisplayName("Fail: Vault Sealed")
+        void getJwks_vaultSealed() {
+            // Arrange
+            when(sealManager.isSealed()).thenReturn(true);
+
+            // Act & Assert
+            VaultSealedException ex = assertThrows(VaultSealedException.class, () -> {
+                jwtSecretsEngine.getJwks(keyNameRsa);
+            });
+            assertThat(ex.getMessage()).isEqualTo("Vault is sealed");
+
+            // Verify minimal interactions
+            verify(sealManager).isSealed();
+            verify(storageBackend, never()).get(anyString());
+            verify(auditHelper, never()).logInternalEvent(any(), any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("Fail: Config Not Found")
+        void getJwks_configNotFound() throws Exception {
+            // Arrange
+            when(storageBackend.get(eq(configPathRsa))).thenReturn(Optional.empty());
+
+            // Act & Assert
+            JwtKeyNotFoundException ex = assertThrows(JwtKeyNotFoundException.class, () -> {
+                jwtSecretsEngine.getJwks(keyNameRsa);
+            });
+            assertThat(ex.getMessage()).isEqualTo("JWT key configuration not found for name: " + keyNameRsa);
+
+            // Verify Audit Log (Failure)
+            ArgumentCaptor<Map<String, Object>> auditCaptor = ArgumentCaptor.forClass(Map.class);
+            verify(auditHelper).logInternalEvent(
+                    eq("jwt_operation"), eq("get_jwks"), eq("failure"), isNull(), auditCaptor.capture()
+            );
+            assertThat(auditCaptor.getValue())
+                    .containsEntry("key_name", keyNameRsa)
+                    .containsEntry("error", ex.getMessage());
+        }
+
+        @Test
+        @DisplayName("Fail: Key Material Not Found for Current Version")
+        void getJwks_materialNotFound() throws Exception {
+            // Arrange
+            // Config read succeeds (default setup)
+            when(storageBackend.get(eq(materialPathRsa))).thenReturn(Optional.empty());
+
+            // Act & Assert
+            JwtKeyNotFoundException ex = assertThrows(JwtKeyNotFoundException.class, () -> {
+                jwtSecretsEngine.getJwks(keyNameRsa);
+            });
+            assertThat(ex.getMessage()).isEqualTo(String.format("JWT key material not found for key '%s', version %d", keyNameRsa, version));
+
+            // Verify Audit Log (Failure)
+            ArgumentCaptor<Map<String, Object>> auditCaptor = ArgumentCaptor.forClass(Map.class);
+            verify(auditHelper).logInternalEvent(
+                    eq("jwt_operation"), eq("get_jwks"), eq("failure"), isNull(), auditCaptor.capture()
+            );
+            assertThat(auditCaptor.getValue())
+                    .containsEntry("key_name", keyNameRsa)
+                    .containsEntry("error", ex.getMessage());
+        }
+
+        @Test
+        @DisplayName("Fail: Public Key Base64 Decode Failure")
+        void getJwks_publicKeyBase64DecodeFails() throws Exception {
+            // Arrange
+            // Config read succeeds (using default mocks from @BeforeEach)
+
+            // 1. Define the material object containing the invalid Base64 public key
+            StoredJwtKeyMaterial invalidMaterial = new StoredJwtKeyMaterial(
+                    "---Invalid Base64---", // The invalid data
+                    "dummyEncryptedPrivateKeyB64" // Content doesn't matter here
+            );
+
+            // 2. Define the JSON bytes that represent the invalidMaterial object
+            //    (This is what encryptionService.decrypt should return for the material path)
+            String invalidMaterialJsonString = String.format(
+                    "{\"publicKeyB64\":\"%s\",\"encryptedPrivateKeyB64\":\"%s\"}",
+                    "---Invalid Base64---",
+                    "dummyEncryptedPrivateKeyB64"
+            );
+            byte[] invalidMaterialJsonBytes = invalidMaterialJsonString.getBytes();
+
+
+            // --- Mocks for the Material Path leading to the failure ---
+
+            // 3. Mock storageBackend.get(materialPathRsa) to return valid EncryptedData
+            //    (Using encryptedRsaMaterialData from setup is fine)
+            lenient().when(storageBackend.get(eq(materialPathRsa))).thenReturn(Optional.of(encryptedRsaMaterialData));
+
+            // 4. Mock encryptionService.decrypt for the *material* bytes to return the invalid JSON
+            //    (encryptedRsaMaterialBytes corresponds to encryptedRsaMaterialData from setup)
+            lenient().when(encryptionService.decrypt(eq(encryptedRsaMaterialBytes))).thenReturn(invalidMaterialJsonBytes);
+
+            // 5. Mock objectMapper.readValue for the *material* JSON to return the object with invalid Base64
+            lenient().when(objectMapper.readValue(eq(invalidMaterialJsonBytes), eq(JwtSecretsEngine.KEY_MATERIAL_TYPE_REF)))
+                    .thenReturn(invalidMaterial);
+
+            // --- Config path mocks are handled by @BeforeEach ---
+            // --- Ensure no conflicting broad mocks like decrypt(any()) exist in this test ---
+
+            // Act & Assert
+            SecretsEngineException ex = assertThrows(SecretsEngineException.class, () -> {
+                jwtSecretsEngine.getJwks(keyNameRsa); // Line 1364/1365
+            });
+
+            // Assert that the exception comes from the Base64 decoding step
+            assertThat(ex.getMessage()).isEqualTo("Invalid Base64 format for stored public key."); // Line 1367
+            assertThat(ex.getCause()).isInstanceOf(IllegalArgumentException.class);
+
+            // Verify interactions up to the point of failure
+            verify(storageBackend).get(eq(configPathRsa));          // Config read
+            verify(encryptionService).decrypt(eq(encryptedRsaConfigBytes)); // Config decrypt
+            verify(objectMapper).readValue(eq(rsaConfigJsonBytes), eq(JwtKeyConfig.class)); // Config parse
+
+            verify(storageBackend).get(eq(materialPathRsa));        // Material read
+            verify(encryptionService).decrypt(eq(encryptedRsaMaterialBytes)); // Material decrypt (returns invalid JSON)
+            verify(objectMapper).readValue(eq(invalidMaterialJsonBytes), eq(JwtSecretsEngine.KEY_MATERIAL_TYPE_REF)); // Material parse (returns object with invalid Base64)
+            // Base64.getDecoder().decode() is called internally after this and throws
+
+            // Verify Audit Log (Failure)
+            ArgumentCaptor<Map<String, Object>> auditCaptor = ArgumentCaptor.forClass(Map.class);
+            verify(auditHelper).logInternalEvent(
+                    eq("jwt_operation"), eq("get_jwks"), eq("failure"), isNull(), auditCaptor.capture()
+            );
+            assertThat(auditCaptor.getValue())
+                    .containsEntry("key_name", keyNameRsa)
+                    .containsEntry("error", "Invalid Base64 format for stored public key."); // Match the expected exception message
+        }
+
+        @Test
+        @DisplayName("Fail: Public Key Reconstruction Failure (Invalid Bytes)")
+        void getJwks_reconstructPublicKeyFails() throws Exception {
+            // Arrange
+            // Config read succeeds (using default mocks from @BeforeEach)
+
+            // 1. Define the invalid public key bytes and the material object containing them
+            byte[] invalidPublicKeyBytes = new byte[]{1, 2, 3, 4}; // Invalid X.509 bytes
+            StoredJwtKeyMaterial materialWithInvalidBytes = new StoredJwtKeyMaterial(
+                    Base64.getEncoder().encodeToString(invalidPublicKeyBytes), // Valid Base64, invalid key bytes
+                    "dummyEncryptedPrivateKeyB64" // Content doesn't matter for this test
+            );
+
+            // 2. Define the JSON bytes that represent the materialWithInvalidBytes object
+            //    (This is what encryptionService.decrypt should return for the material path)
+            //    Using a simple string representation for clarity in the test.
+            String invalidMaterialJsonString = String.format(
+                    "{\"publicKeyB64\":\"%s\",\"encryptedPrivateKeyB64\":\"%s\"}",
+                    Base64.getEncoder().encodeToString(invalidPublicKeyBytes),
+                    "dummyEncryptedPrivateKeyB64"
+            );
+            byte[] materialJsonBytesWithInvalidKey = invalidMaterialJsonString.getBytes();
+
+            // --- Mocks for the Material Path leading to the failure ---
+
+            // 3. Mock storageBackend.get(materialPathRsa) to return valid EncryptedData
+            //    (Using encryptedRsaMaterialData from setup is fine, as its content will be overridden by the decrypt mock)
+            lenient().when(storageBackend.get(eq(materialPathRsa))).thenReturn(Optional.of(encryptedRsaMaterialData));
+
+            // 4. Mock encryptionService.decrypt for the *material* bytes to return the JSON with the invalid key
+            //    (encryptedRsaMaterialBytes is the byte array corresponding to encryptedRsaMaterialData from setup)
+            lenient().when(encryptionService.decrypt(eq(encryptedRsaMaterialBytes))).thenReturn(materialJsonBytesWithInvalidKey);
+
+            // 5. Mock objectMapper.readValue for the *material* JSON to return the object with the invalid key
+            lenient().when(objectMapper.readValue(eq(materialJsonBytesWithInvalidKey), eq(JwtSecretsEngine.KEY_MATERIAL_TYPE_REF)))
+                    .thenReturn(materialWithInvalidBytes);
+
+            // --- Config path mocks are handled by @BeforeEach ---
+
+            // Act & Assert
+            SecretsEngineException ex = assertThrows(SecretsEngineException.class, () -> {
+                jwtSecretsEngine.getJwks(keyNameRsa); // Line 1397/1398
+            });
+
+            // Assert that the exception comes from reconstructPublicKey
+            assertThat(ex.getMessage()).isEqualTo("Failed to reconstruct public key."); // Line 1401
+            assertThat(ex.getCause()).isInstanceOf(InvalidKeySpecException.class);
+
+            // Verify interactions up to the point of failure
+            verify(storageBackend).get(eq(configPathRsa));          // Config read
+            verify(encryptionService).decrypt(eq(encryptedRsaConfigBytes)); // Config decrypt
+            verify(objectMapper).readValue(eq(rsaConfigJsonBytes), eq(JwtKeyConfig.class)); // Config parse
+
+            verify(storageBackend).get(eq(materialPathRsa));        // Material read
+            verify(encryptionService).decrypt(eq(encryptedRsaMaterialBytes)); // Material decrypt (returns invalid key JSON)
+            verify(objectMapper).readValue(eq(materialJsonBytesWithInvalidKey), eq(JwtSecretsEngine.KEY_MATERIAL_TYPE_REF)); // Material parse (returns object with invalid key)
+            // reconstructPublicKey is called internally after this and throws
+
+            // Verify Audit Log (Failure)
+            ArgumentCaptor<Map<String, Object>> auditCaptor = ArgumentCaptor.forClass(Map.class);
+            verify(auditHelper).logInternalEvent(
+                    eq("jwt_operation"), eq("get_jwks"), eq("failure"), isNull(), auditCaptor.capture()
+            );
+            assertThat(auditCaptor.getValue())
+                    .containsEntry("key_name", keyNameRsa)
+                    .containsEntry("error", "Failed to reconstruct public key."); // Match the expected exception message
+        }
+
+        @Test
+        @DisplayName("Fail: Unsupported RSA Key Size for JWS Algorithm")
+        void getJwks_unsupportedRsaSizeForJws() throws Exception {
+            // Arrange
+            // Override key definition mock to have small size
+            JwtKeyDefinition smallRsaDefinition = new JwtKeyDefinition(JwtKeyType.RSA, 1024, null, null);
+            JwtProperties jwtProperties = mock(JwtProperties.class);
+            when(properties.jwt()).thenReturn(jwtProperties); // Override lenient mock
+            when(jwtProperties.keys()).thenReturn(Map.of(keyNameRsa, smallRsaDefinition));
+            // Config and material read succeed (using default mocks)
+
+            // Act & Assert
+            SecretsEngineException ex = assertThrows(SecretsEngineException.class, () -> {
+                jwtSecretsEngine.getJwks(keyNameRsa);
+            });
+            // This comes from determineJwsAlgorithm
+            assertThat(ex.getMessage()).isEqualTo("Unsupported RSA key size for JWS: 1024");
+
+            // Verify Audit Log (Failure)
+            ArgumentCaptor<Map<String, Object>> auditCaptor = ArgumentCaptor.forClass(Map.class);
+            verify(auditHelper).logInternalEvent(
+                    eq("jwt_operation"), eq("get_jwks"), eq("failure"), isNull(), auditCaptor.capture()
+            );
+            assertThat(auditCaptor.getValue())
+                    .containsEntry("key_name", keyNameRsa)
+                    .containsEntry("error", ex.getMessage());
+        }
+
+        @Test
+        @DisplayName("Fail: Unsupported EC Curve for JWS Algorithm")
+        void getJwks_unsupportedEcCurveForJws() throws Exception {
+            // Arrange
+            // Override key definition mock to have unsupported curve
+            JwtKeyDefinition badCurveEcDefinition = new JwtKeyDefinition(JwtKeyType.EC, null, "P-192", null); // Assume P-192 is unsupported
+            JwtProperties jwtProperties = mock(JwtProperties.class);
+            when(properties.jwt()).thenReturn(jwtProperties); // Override lenient mock
+            when(jwtProperties.keys()).thenReturn(Map.of(keyNameEc, badCurveEcDefinition));
+            // Config and material read succeed (using default mocks)
+
+            // Act & Assert
+            SecretsEngineException ex = assertThrows(SecretsEngineException.class, () -> {
+                jwtSecretsEngine.getJwks(keyNameEc);
+            });
+            // This comes from determineJwsAlgorithm
+            assertThat(ex.getMessage()).isEqualTo("Unsupported EC curve for JWS: P-192");
+
+            // Verify Audit Log (Failure)
+            ArgumentCaptor<Map<String, Object>> auditCaptor = ArgumentCaptor.forClass(Map.class);
+            verify(auditHelper).logInternalEvent(
+                    eq("jwt_operation"), eq("get_jwks"), eq("failure"), isNull(), auditCaptor.capture()
+            );
+            assertThat(auditCaptor.getValue())
+                    .containsEntry("key_name", keyNameEc)
+                    .containsEntry("error", ex.getMessage());
+        }
+
     }
-
-
 
     // --- Task 3.5: reconstructPrivateKey / reconstructPublicKey Tests ---
     // NOTE: These tests use Reflection to access private methods directly,

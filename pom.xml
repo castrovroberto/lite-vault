@@ -4,11 +4,13 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
+  <!-- Inherit defaults from Spring Boot -->
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
     <version>3.4.5</version>
-    <relativePath/> </parent>
+    <relativePath/> <!-- lookup parent from repository -->
+  </parent>
 
   <groupId>tech.yump</groupId>
   <artifactId>lite-vault</artifactId>
@@ -19,13 +21,18 @@
   <properties>
     <java.version>21</java.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+    <!-- Explicit versions for libraries not managed (or needing override) by Spring Boot Parent -->
     <bouncycastle.version>1.78.1</bouncycastle.version>
     <jjwt.version>0.12.6</jjwt.version>
+    <nimbus-jose-jwt.version>9.39.1</nimbus-jose-jwt.version>
     <jsr305.version>3.0.2</jsr305.version>
+    <!-- PostgreSQL version kept explicit for potential specific needs, though Spring Boot manages one -->
+    <postgresql.version>42.7.5</postgresql.version>
   </properties>
 
   <dependencies>
-
+    <!-- == Spring Boot Starters == -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter</artifactId>
@@ -51,33 +58,22 @@
       <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
 
+    <!-- == Cryptography == -->
     <dependency>
       <groupId>org.bouncycastle</groupId>
       <artifactId>bcprov-jdk18on</artifactId>
       <version>${bouncycastle.version}</version>
     </dependency>
 
+    <!-- == Database == -->
     <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
+      <version>${postgresql.version}</version>
       <scope>runtime</scope>
     </dependency>
 
-    <dependency>
-      <groupId>org.projectlombok</groupId>
-      <artifactId>lombok</artifactId>
-      <optional>true</optional>
-    </dependency>
-    <dependency>
-      <groupId>com.fasterxml.jackson.datatype</groupId>
-      <artifactId>jackson-datatype-jsr310</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>com.google.code.findbugs</groupId>
-      <artifactId>jsr305</artifactId>
-      <version>${jsr305.version}</version>
-    </dependency>
-
+    <!-- == JWT Libraries == -->
     <dependency>
       <groupId>io.jsonwebtoken</groupId>
       <artifactId>jjwt-api</artifactId>
@@ -95,7 +91,32 @@
       <version>${jjwt.version}</version>
       <scope>runtime</scope>
     </dependency>
+    <dependency>
+      <groupId>com.nimbusds</groupId>
+      <artifactId>nimbus-jose-jwt</artifactId>
+      <version>${nimbus-jose-jwt.version}</version>
+    </dependency>
 
+    <!-- == Utilities == -->
+    <dependency>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <!-- Required for Java 8+ Time types (Instant, Duration) with Jackson -->
+      <groupId>com.fasterxml.jackson.datatype</groupId>
+      <artifactId>jackson-datatype-jsr310</artifactId>
+      <!-- Version managed by Spring Boot Parent -->
+    </dependency>
+    <dependency>
+      <!-- Annotations like @Nullable, @Nonnull -->
+      <groupId>com.google.code.findbugs</groupId>
+      <artifactId>jsr305</artifactId>
+      <version>${jsr305.version}</version>
+    </dependency>
+
+    <!-- == Testing == -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
@@ -110,16 +131,13 @@
       <groupId>org.testcontainers</groupId>
       <artifactId>junit-jupiter</artifactId>
       <scope>test</scope>
+      <!-- Version managed by Spring Boot Parent -->
     </dependency>
     <dependency>
       <groupId>org.testcontainers</groupId>
       <artifactId>postgresql</artifactId>
       <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>com.nimbusds</groupId>
-      <artifactId>nimbus-jose-jwt</artifactId>
-      <version>9.39.1</version> <!-- Use the latest appropriate version -->
+      <!-- Version managed by Spring Boot Parent -->
     </dependency>
 
   </dependencies>
@@ -139,11 +157,13 @@
         </configuration>
       </plugin>
       <plugin>
+        <!-- Ensure compilation uses the specified Java version -->
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
+        <!-- Version typically inherited from parent -->
         <configuration>
-          <source>${java.version}</source>
-          <target>${java.version}</target>
+          <!-- Source/Target already inherited from parent via java.version property -->
+          <parameters>true</parameters> <!-- Recommended for parameter name retention -->
         </configuration>
       </plugin>
     </plugins>
