@@ -4,14 +4,11 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <!-- Inherit defaults from Spring Boot -->
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
-    <!-- Use a recent stable version -->
-    <version>3.2.5</version>
-    <relativePath/> <!-- lookup parent from repository -->
-  </parent>
+    <version>3.4.5</version>
+    <relativePath/> </parent>
 
   <groupId>tech.yump</groupId>
   <artifactId>lite-vault</artifactId>
@@ -21,13 +18,14 @@
 
   <properties>
     <java.version>21</java.version>
-    <!-- Explicitly set encoding, although UTF-8 is default in recent Maven/Spring Boot -->
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <bouncycastle.version>1.78.1</bouncycastle.version>
+    <jjwt.version>0.12.6</jjwt.version>
+    <jsr305.version>3.0.2</jsr305.version>
   </properties>
 
   <dependencies>
 
-    <!-- == Spring Boot Starters == -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter</artifactId>
@@ -35,45 +33,39 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-web</artifactId>
-      <!-- Includes starters for core, webmvc, tomcat, json -->
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-validation</artifactId>
-      <!-- For configuration properties validation (@Validated, @NotBlank, etc.) -->
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-security</artifactId>
-      <!-- Core Spring Security, web security, configuration -->
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-jdbc</artifactId>
-      <!-- For database access using JdbcTemplate, includes HikariCP -->
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
 
-    <!-- == Security & Cryptography == -->
     <dependency>
       <groupId>org.bouncycastle</groupId>
       <artifactId>bcprov-jdk18on</artifactId>
-      <!-- Required for advanced cryptographic algorithms like AES-GCM -->
-      <version>1.78.1</version> <!-- Version specified as likely not managed by Spring Boot parent -->
+      <version>${bouncycastle.version}</version>
     </dependency>
 
-    <!-- == Database == -->
     <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
-      <!-- PostgreSQL JDBC driver -->
       <scope>runtime</scope>
     </dependency>
 
-    <!-- == Utilities == -->
     <dependency>
       <groupId>org.projectlombok</groupId>
       <artifactId>lombok</artifactId>
-      <!-- Reduces boilerplate code -->
       <optional>true</optional>
     </dependency>
     <dependency>
@@ -83,34 +75,45 @@
     <dependency>
       <groupId>com.google.code.findbugs</groupId>
       <artifactId>jsr305</artifactId>
-      <version>3.0.2</version>
+      <version>${jsr305.version}</version>
     </dependency>
 
-    <!-- == Testing == -->
+    <dependency>
+      <groupId>io.jsonwebtoken</groupId>
+      <artifactId>jjwt-api</artifactId>
+      <version>${jjwt.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.jsonwebtoken</groupId>
+      <artifactId>jjwt-impl</artifactId>
+      <version>${jjwt.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.jsonwebtoken</groupId>
+      <artifactId>jjwt-jackson</artifactId>
+      <version>${jjwt.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
-      <!-- Core testing framework (JUnit 5, Mockito, AssertJ, Hamcrest, etc.) -->
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.springframework.security</groupId>
       <artifactId>spring-security-test</artifactId>
-      <!-- Utilities for testing Spring Security protected endpoints -->
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.testcontainers</groupId>
       <artifactId>junit-jupiter</artifactId>
-      <!-- Testcontainers integration with JUnit 5 -->
-      <!-- Version managed by spring-boot-starter-parent -->
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.testcontainers</groupId>
       <artifactId>postgresql</artifactId>
-      <!-- Testcontainers module for PostgreSQL -->
-      <!-- Version managed by spring-boot-starter-parent -->
       <scope>test</scope>
     </dependency>
 
@@ -118,30 +121,24 @@
 
   <build>
     <plugins>
-      <!-- Spring Boot Maven Plugin for packaging and running -->
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
         <configuration>
           <excludes>
             <exclude>
-              <!-- Exclude Lombok from final JAR -->
               <groupId>org.projectlombok</groupId>
               <artifactId>lombok</artifactId>
             </exclude>
           </excludes>
         </configuration>
       </plugin>
-      <!-- Maven Compiler Plugin -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
-        <!-- Version typically inherited from parent -->
         <configuration>
           <source>${java.version}</source>
           <target>${java.version}</target>
-          <!-- Keep preview features enabled if needed -->
-          <compilerArgs>--enable-preview</compilerArgs>
         </configuration>
       </plugin>
     </plugins>

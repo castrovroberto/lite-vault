@@ -5,6 +5,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -30,7 +31,9 @@ import java.util.UUID;
 public class StaticTokenAuthFilter extends OncePerRequestFilter {
 
   public static final String VAULT_TOKEN_HEADER = "X-Vault-Token";
-  public static final String REQUEST_ID_ATTR = "auditRequestId"; // Added
+  public static final String REQUEST_ID_ATTR = "auditRequestId";
+  public static final String MDC_REQUEST_ID_KEY = "requestId";
+
 
   private final boolean staticAuthEnabled;
   private final List<MssmProperties.AuthProperties.StaticTokenPolicyMapping> tokenMappings;
@@ -63,92 +66,95 @@ public class StaticTokenAuthFilter extends OncePerRequestFilter {
     }
   }
 
-  // ... (keep shouldNotFilter method) ...
-
   @Override
   protected void doFilterInternal(
           @NonNull HttpServletRequest request,
           @NonNull HttpServletResponse response,
           @NonNull FilterChain filterChain) throws ServletException, IOException {
 
-    // Generate and store a unique request ID for auditing
     String requestId = UUID.randomUUID().toString();
-    request.setAttribute(REQUEST_ID_ATTR, requestId); // Added
+    request.setAttribute(REQUEST_ID_ATTR, requestId);
 
-    if (!staticAuthEnabled) {
-      log.trace("Static token authentication is disabled via configuration. Skipping filter.");
-      filterChain.doFilter(request, response);
-      return;
-    }
+     MDC.put(MDC_REQUEST_ID_KEY, requestId);
 
-    final String tokenHeader = request.getHeader(VAULT_TOKEN_HEADER);
+     try {
+       if (!staticAuthEnabled) {
+         log.trace("Static token authentication is disabled via configuration. Skipping filter.");
+         filterChain.doFilter(request, response);
+         return;
+       }
 
-    // If no token or already authenticated, proceed without logging an auth *attempt* here
-    if (!StringUtils.hasText(tokenHeader) || SecurityContextHolder.getContext().getAuthentication() != null) {
-      log.trace("No {} header found or authentication already present for {}. Proceeding.",
-              VAULT_TOKEN_HEADER, request.getRequestURI());
-      filterChain.doFilter(request, response);
-      return;
-    }
+       final String tokenHeader = request.getHeader(VAULT_TOKEN_HEADER);
 
-    final String providedToken = tokenHeader.trim();
-    Optional<MssmProperties.AuthProperties.StaticTokenPolicyMapping> mappingOptional = tokenMappings.stream()
-            .filter(mapping -> providedToken.equals(mapping.token()))
-            .findFirst();
+       // If no token or already authenticated, proceed without logging an auth *attempt* here
+       if (!StringUtils.hasText(tokenHeader) || SecurityContextHolder.getContext().getAuthentication() != null) {
+         log.trace("No {} header found or authentication already present for {}. Proceeding.",
+                 VAULT_TOKEN_HEADER, request.getRequestURI());
+         filterChain.doFilter(request, response);
+         return;
+       }
 
-    if (mappingOptional.isPresent()) {
-      // --- Successful Authentication ---
-      MssmProperties.AuthProperties.StaticTokenPolicyMapping mapping = mappingOptional.get();
-      List<String> associatedPolicyNames = List.copyOf(mapping.policyNames());
-      log.debug("Valid token found for request URI: {}. Associating policies: {}",
-              request.getRequestURI(), associatedPolicyNames);
+       final String providedToken = tokenHeader.trim();
+       Optional<MssmProperties.AuthProperties.StaticTokenPolicyMapping> mappingOptional = tokenMappings.stream()
+               .filter(mapping -> providedToken.equals(mapping.token()))
+               .findFirst();
 
-      List<GrantedAuthority> authorities = associatedPolicyNames.stream()
-              .map(policyName -> (GrantedAuthority) new SimpleGrantedAuthority("POLICY_" + policyName))
-              .toList();
+       if (mappingOptional.isPresent()) {
+         // --- Successful Authentication ---
+         MssmProperties.AuthProperties.StaticTokenPolicyMapping mapping = mappingOptional.get();
+         List<String> associatedPolicyNames = List.copyOf(mapping.policyNames());
+         log.debug("Valid token found for request URI: {}. Associating policies: {}",
+                 request.getRequestURI(), associatedPolicyNames);
 
-      UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-              mapping.token(), // Principal is the token itself
-              null,            // No credentials needed here
-              authorities      // Authorities derived from policy names
-      );
-      authentication.setDetails(
-              new WebAuthenticationDetailsSource().buildDetails(request)
-      );
-      SecurityContextHolder.getContext().setAuthentication(authentication);
-      log.info("Successfully authenticated request using static token for URI: {}. Authorities: {}",
-              request.getRequestURI(), authorities);
+         List<GrantedAuthority> authorities = associatedPolicyNames.stream()
+                 .map(policyName -> (GrantedAuthority) new SimpleGrantedAuthority("POLICY_" + policyName))
+                 .toList();
 
-      // --- Audit Log for Success ---
-      logAuditEvent(
-              "auth",
-              "token_validation",
-              "success",
-              authentication, // Pass the created authentication object
-              request,
-              null, // No specific response info at this stage
-              Map.of("policies", associatedPolicyNames) // Add associated policies
-      );
+         UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                 mapping.token(), // Principal is the token itself
+                 null,            // No credentials needed here
+                 authorities      // Authorities derived from policy names
+         );
+         authentication.setDetails(
+                 new WebAuthenticationDetailsSource().buildDetails(request)
+         );
+         SecurityContextHolder.getContext().setAuthentication(authentication);
+         log.info("Successfully authenticated request using static token for URI: {}. Authorities: {}",
+                 request.getRequestURI(), authorities);
 
-    } else {
-      // --- Failed Authentication ---
-      log.warn("Invalid or unknown static token received for URI: {}", request.getRequestURI());
+         // --- Audit Log for Success ---
+         logAuditEvent(
+                 "auth",
+                 "token_validation",
+                 "success",
+                 authentication, // Pass the created authentication object
+                 request,
+                 null, // No specific response info at this stage
+                 Map.of("policies", associatedPolicyNames) // Add associated policies
+         );
 
-      // --- Audit Log for Failure ---
-      logAuditEvent(
-              "auth",
-              "token_validation",
-              "failure",
-              null, // No valid authentication object
-              request,
-              null, // No specific response info at this stage
-              Map.of("reason", "invalid_token") // Add failure reason
-      );
-      // Note: We still proceed down the filter chain. Spring Security's default
-      // ExceptionTranslationFilter or our PolicyEnforcementFilter will likely deny access later.
-    }
+       } else {
+         // --- Failed Authentication ---
+         log.warn("Invalid or unknown static token received for URI: {}", request.getRequestURI());
 
-    filterChain.doFilter(request, response);
+         // --- Audit Log for Failure ---
+         logAuditEvent(
+                 "auth",
+                 "token_validation",
+                 "failure",
+                 null, // No valid authentication object
+                 request,
+                 null, // No specific response info at this stage
+                 Map.of("reason", "invalid_token") // Add failure reason
+         );
+         // Note: We still proceed down the filter chain. Spring Security's default
+         // ExceptionTranslationFilter or our PolicyEnforcementFilter will likely deny access later.
+       }
+
+       filterChain.doFilter(request, response);
+     } finally {
+       MDC.remove(MDC_REQUEST_ID_KEY);
+     }
   }
 
   // --- Helper method to build and log AuditEvent ---

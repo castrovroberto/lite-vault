@@ -6,6 +6,9 @@ import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.context.properties.bind.validation.BindValidationException;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.core.convert.ConverterNotFoundException;
+
+import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -16,6 +19,16 @@ public class ConfigurationValidationTest {
 
     @EnableConfigurationProperties(MssmProperties.class)
     static class TestConfig {}
+
+    private ApplicationContextRunner runnerWithBaseProps() {
+        return contextRunner.withPropertyValues(
+                "mssm.master.b64=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                "mssm.storage.filesystem.path=./test-validation-storage",
+                "mssm.policies[0].name=dummy",
+                "mssm.policies[0].rules[0].path=dummy/*",
+                "mssm.policies[0].rules[0].capabilities=READ"
+        );
+    }
 
     @Test
     @DisplayName("Config Validation: Should FAIL when static auth enabled but mappings are empty")
@@ -242,4 +255,214 @@ public class ConfigurationValidationTest {
                     assertThat(props.secrets()).isNull();
                 });
     }
+
+
+    @Test
+    @DisplayName("JWT Config Validation: Should PASS with valid RSA key")
+    void validateJwt_validRsa_shouldPass() {
+        runnerWithBaseProps()
+                .withPropertyValues(
+                        "mssm.jwt.keys.my-rsa.type=RSA",
+                        "mssm.jwt.keys.my-rsa.size=2048"
+                        // rotationPeriod is optional
+                )
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).hasSingleBean(MssmProperties.class);
+                    MssmProperties props = context.getBean(MssmProperties.class);
+                    assertThat(props.jwt()).isNotNull();
+                    assertThat(props.jwt().keys()).containsKey("my-rsa");
+                    MssmProperties.JwtKeyDefinition keyDef = props.jwt().keys().get("my-rsa");
+                    assertThat(keyDef.type()).isEqualTo(MssmProperties.JwtKeyType.RSA);
+                    assertThat(keyDef.size()).isEqualTo(2048);
+                    assertThat(keyDef.curve()).isNull();
+                });
+    }
+
+    @Test
+    @DisplayName("JWT Config Validation: Should PASS with valid EC key")
+    void validateJwt_validEc_shouldPass() {
+        runnerWithBaseProps()
+                .withPropertyValues(
+                        "mssm.jwt.keys.my-ec.type=EC",
+                        "mssm.jwt.keys.my-ec.curve=P-256", // Valid curve
+                        "mssm.jwt.keys.my-ec.rotation-period=7d" // Optional
+                )
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).hasSingleBean(MssmProperties.class);
+                    MssmProperties props = context.getBean(MssmProperties.class);
+                    assertThat(props.jwt()).isNotNull();
+                    assertThat(props.jwt().keys()).containsKey("my-ec");
+                    MssmProperties.JwtKeyDefinition keyDef = props.jwt().keys().get("my-ec");
+                    assertThat(keyDef.type()).isEqualTo(MssmProperties.JwtKeyType.EC);
+                    assertThat(keyDef.curve()).isEqualTo("P-256");
+                    assertThat(keyDef.size()).isNull();
+                    assertThat(keyDef.rotationPeriod()).isEqualTo(Duration.ofDays(7));
+                });
+    }
+
+    @Test
+    @DisplayName("JWT Config Validation: Should FAIL if RSA key is missing size")
+    void validateJwt_rsaMissingSize_shouldFail() {
+        runnerWithBaseProps()
+                .withPropertyValues(
+                        "mssm.jwt.keys.my-rsa.type=RSA" // Size is missing
+                )
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasRootCauseInstanceOf(BindValidationException.class)
+                            .rootCause().hasMessageContaining("RSA keys must specify a 'size'");
+                });
+    }
+
+    @Test
+    @DisplayName("JWT Config Validation: Should FAIL if RSA key size is too small")
+    void validateJwt_rsaSizeTooSmall_shouldFail() {
+        runnerWithBaseProps()
+                .withPropertyValues(
+                        "mssm.jwt.keys.my-rsa.type=RSA",
+                        "mssm.jwt.keys.my-rsa.size=1024" // Too small
+                )
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasRootCauseInstanceOf(BindValidationException.class)
+                            .rootCause().hasMessageContaining("RSA key size must be at least 2048 bits");
+                });
+    }
+
+    @Test
+    @DisplayName("JWT Config Validation: Should FAIL if RSA key specifies curve")
+    void validateJwt_rsaSpecifiesCurve_shouldFail() {
+        runnerWithBaseProps()
+                .withPropertyValues(
+                        "mssm.jwt.keys.my-rsa.type=RSA",
+                        "mssm.jwt.keys.my-rsa.size=2048",
+                        "mssm.jwt.keys.my-rsa.curve=P-256" // Curve specified for RSA
+                )
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasRootCauseInstanceOf(BindValidationException.class)
+                            .rootCause().hasMessageContaining("RSA keys must specify a 'size' (>= 2048) and must not specify a 'curve'");
+                });
+    }
+
+    @Test
+    @DisplayName("JWT Config Validation: Should FAIL if EC key is missing curve")
+    void validateJwt_ecMissingCurve_shouldFail() {
+        runnerWithBaseProps()
+                .withPropertyValues(
+                        "mssm.jwt.keys.my-ec.type=EC" // Curve is missing
+                )
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasRootCauseInstanceOf(BindValidationException.class)
+                            .rootCause().hasMessageContaining("EC keys must specify a valid 'curve'");
+                });
+    }
+
+    @Test
+    @DisplayName("JWT Config Validation: Should FAIL if EC key has invalid curve")
+    void validateJwt_ecInvalidCurve_shouldFail() {
+        runnerWithBaseProps()
+                .withPropertyValues(
+                        "mssm.jwt.keys.my-ec.type=EC",
+                        "mssm.jwt.keys.my-ec.curve=invalid-curve" // Not in allowed set
+                )
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasRootCauseInstanceOf(BindValidationException.class)
+                            .rootCause().hasMessageContaining("EC keys must specify a valid 'curve'");
+                });
+    }
+
+    @Test
+    @DisplayName("JWT Config Validation: Should FAIL if EC key specifies size")
+    void validateJwt_ecSpecifiesSize_shouldFail() {
+        runnerWithBaseProps()
+                .withPropertyValues(
+                        "mssm.jwt.keys.my-ec.type=EC",
+                        "mssm.jwt.keys.my-ec.curve=P-256",
+                        "mssm.jwt.keys.my-ec.size=2048" // Size specified for EC
+                )
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasRootCauseInstanceOf(BindValidationException.class)
+                            .rootCause().hasMessageContaining("EC keys must specify a valid 'curve' (P-256, P-384, P-521) and must not specify a 'size'");
+                });
+    }
+
+    @Test
+    @DisplayName("JWT Config Validation: Should FAIL if key type is missing")
+    void validateJwt_missingType_shouldFail() {
+        runnerWithBaseProps()
+                .withPropertyValues(
+                        // "mssm.jwt.keys.my-key.type=...", // Type is missing
+                        "mssm.jwt.keys.my-key.size=2048"
+                )
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasRootCauseInstanceOf(BindValidationException.class)
+                            .rootCause().hasMessageContaining("Key type (type: RSA or EC) must be specified");
+                });
+    }
+
+    @Test
+    @DisplayName("JWT Config Validation: Should FAIL if key type is invalid")
+    void validateJwt_invalidType_shouldFail() {
+        runnerWithBaseProps()
+                .withPropertyValues(
+                        "mssm.jwt.keys.my-key.type=INVALID_TYPE",
+                        "mssm.jwt.keys.my-key.size=2048"
+                )
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    // Spring Boot's property binding will fail trying to convert "INVALID_TYPE" to the enum
+                    assertThat(context.getStartupFailure())
+                            .hasRootCauseInstanceOf(IllegalArgumentException.class)
+                            .rootCause()
+                            .hasMessageContaining("No enum constant tech.yump.vault.config.MssmProperties.JwtKeyType.INVALID_TYPE");
+                });
+    }
+
+    @Test
+    @DisplayName("JWT Config Validation: Should FAIL if jwt.keys map is empty")
+    void validateJwt_emptyKeysMap_shouldFail() {
+        runnerWithBaseProps()
+                .withPropertyValues(
+                        "mssm.jwt.keys="
+                )
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasRootCauseInstanceOf(org.springframework.core.convert.ConverterNotFoundException.class)
+                            .rootCause()
+                            .hasMessageContaining("No converter found capable of converting from type [java.lang.String] to type");
+                    assertThat(context.getStartupFailure().getMessage())
+                            .contains("Error creating bean with name 'mssm-tech.yump.vault.config.MssmProperties': Could not bind properties to 'MssmProperties'");
+
+                });
+    }
+
+    @Test
+    @DisplayName("JWT Config Validation: Should PASS if jwt section is missing entirely")
+    void validateJwt_missingSection_shouldPass() {
+        runnerWithBaseProps()
+                // No mssm.jwt properties provided
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).hasSingleBean(MssmProperties.class);
+                    MssmProperties props = context.getBean(MssmProperties.class);
+                    assertThat(props.jwt()).isNull(); // jwt property itself will be null
+                });
+    }
+
+
 }

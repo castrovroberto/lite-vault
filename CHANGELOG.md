@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.0] - 2025-04-30
 
 ### Added
+- **JWT Secrets Engine Core (Task 31):**
+  - Created `JwtSecretsEngine.java` implementing `SecretsEngine` in `tech.yump.vault.secrets.jwt`.
+  - Added `jjwt-api`, `jjwt-impl`, and `jjwt-jackson` dependencies to `pom.xml`.
+  - Implemented basic structure with constructor injection for core dependencies (`MssmProperties`, `EncryptionService`, `StorageBackend`, `SealManager`, `AuditHelper`, `ObjectMapper`).
 - **Audit Logging for DB Actions (Task 28):**
    - Injected `AuditBackend` into `DbController` and `PostgresSecretsEngine`.
    - Added audit logging within `DBController` for `GET /v1/db/creds/{rolename}` requests:
