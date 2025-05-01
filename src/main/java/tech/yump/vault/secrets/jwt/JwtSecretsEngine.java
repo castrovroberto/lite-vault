@@ -1,4 +1,3 @@
-// src/main/java/tech/yump/vault/secrets/jwt/JwtSecretsEngine.java
 package tech.yump.vault.secrets.jwt;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -6,7 +5,6 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.JwtBuilder;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.SignatureAlgorithm;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -29,22 +27,17 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
-import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.security.spec.ECGenParameterSpec;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
-import java.security.spec.X509EncodedKeySpec; // Needed for JWKS
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Date;
-import java.util.HashMap; // Needed for JWKS
-import java.util.List; // Needed for JWKS
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.stream.Collectors; // Needed for JWKS
 
 @Service
 @Slf4j
@@ -295,10 +288,11 @@ public class JwtSecretsEngine implements SecretsEngine {
             String issuer = "lite-vault"; // Configurable later
             Duration validityDuration = Duration.ofHours(1); // Configurable later
             Instant expiration = now.plus(validityDuration);
+            String keyId = keyName + "-" + currentVersion; // kid header
 
             JwtBuilder builder = Jwts.builder()
                     .header()
-                    .keyId(keyName + "-" + currentVersion) // kid header
+                    .keyId(keyId) // kid header
                     .and()
                     .issuer(issuer)
                     .issuedAt(Date.from(now))
@@ -308,10 +302,41 @@ public class JwtSecretsEngine implements SecretsEngine {
 
             String jwtString = builder.compact();
             log.info("Successfully signed JWT using key '{}', version {}", keyName, currentVersion);
+
+            // --- Audit Log for successful signing (Task 38) ---
+            auditHelper.logInternalEvent(
+                    "jwt_operation",
+                    "sign_jwt",
+                    "success",
+                    null, // Principal from context or "system"
+                    Map.of(
+                            "key_name", keyName,
+                            "key_version", currentVersion,
+                            "key_id", keyId,
+                            "issuer", issuer
+                    )
+            );
+            // --- End Audit Log ---
+
             return jwtString;
 
         } catch (Exception e) {
             log.error("Failed to build or sign JWT for key '{}', version {}: {}", keyName, currentVersion, e.getMessage(), e);
+
+            // --- Audit Log for signing failure (Task 38) ---
+            auditHelper.logInternalEvent(
+                    "jwt_operation",
+                    "sign_jwt",
+                    "failure",
+                    null, // Principal from context or "system"
+                    Map.of(
+                            "key_name", keyName,
+                            "key_version", currentVersion,
+                            "error", e.getMessage()
+                    )
+            );
+            // --- End Audit Log ---
+
             throw new SecretsEngineException("Failed to sign JWT.", e);
         }
     }
@@ -487,6 +512,8 @@ public class JwtSecretsEngine implements SecretsEngine {
     //     //    e. Add 'kid' (key ID, e.g., keyName + "-" + version) and 'alg'
     //     // 3. Assemble JWKs into a JWK Set JSON structure: {"keys": [jwk1, jwk2, ...]}
     //     // This requires a library or manual implementation of JWK formatting.
+    //     // --- Audit Log for JWKS access (Task 38 - Optional) ---
+    //     // auditHelper.logInternalEvent("jwt_operation", "get_jwks", "success", null, Map.of("key_name", keyName));
     //     throw new UnsupportedOperationException("JWKS endpoint not fully implemented yet.");
     // }
 }

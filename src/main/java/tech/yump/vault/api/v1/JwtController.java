@@ -1,4 +1,3 @@
-// src/main/java/tech/yump/vault/api/v1/JwtController.java
 package tech.yump.vault.api.v1;
 
 import lombok.RequiredArgsConstructor;
@@ -49,7 +48,7 @@ public class JwtController {
             String jwtString = jwtSecretsEngine.signJwt(keyName, claims);
             log.info("Controller: Successfully signed JWT using key '{}'", keyName);
 
-            // Audit success
+            // Audit success (HTTP level)
             auditHelper.logHttpEvent(
                     "jwt_operation",
                     operation,
@@ -62,6 +61,7 @@ public class JwtController {
             return ResponseEntity.ok(new JwtResponse(jwtString));
         } catch (Exception e) {
             // Let exception handlers manage audit logging for failures
+            // The engine itself will log internal signing failures
             throw e;
         }
     }
@@ -75,7 +75,7 @@ public class JwtController {
             jwtSecretsEngine.rotateKey(keyName);
             log.info("Controller: Successfully rotated JWT key '{}'", keyName);
 
-            // Audit success
+            // Audit success (HTTP level)
             auditHelper.logHttpEvent(
                     "jwt_operation",
                     operation,
@@ -88,6 +88,7 @@ public class JwtController {
             return ResponseEntity.noContent().build();
         } catch (Exception e) {
             // Let exception handlers manage audit logging for failures
+            // The engine itself will log internal rotation failures
             throw e;
         }
     }

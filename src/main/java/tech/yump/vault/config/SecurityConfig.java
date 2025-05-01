@@ -75,13 +75,9 @@ public class SecurityConfig {
               // 2. Add Policy Enforcement Filter *after* authentication
               .addFilterAfter(policyEnforcementFilter(), StaticTokenAuthFilter.class)
               .authorizeHttpRequests(authz -> authz
-                      // Define public paths (these won't hit the policy filter due to shouldNotFilter)
                       .requestMatchers("/sys/seal-status", "/").permitAll()
-                      // Require authentication for v1 API paths (ensures StaticTokenAuthFilter runs)
-                      // The actual ALLOW/DENY decision for /v1/** is now made by PolicyEnforcementFilter
+                      .requestMatchers("/v1/jwt/jwks/**").permitAll()
                       .requestMatchers("/v1/**").authenticated()
-                      // Require authentication for any other request not explicitly permitted
-                      // (e.g., future /v2/ or other management endpoints)
                       .anyRequest().authenticated()
               );
     } else {
