@@ -85,7 +85,7 @@ public class JwtSecretsEngine implements SecretsEngine {
     private static final String KEY_CONFIG_PATH_FORMAT = "jwt/keys/%s/config";
     static final TypeReference<StoredJwtKeyMaterial> KEY_MATERIAL_TYPE_REF = new TypeReference<>() {}; // For deserialization
 
-    // --- Task 33 Method (generateAndStoreKeyPair) ---
+    // --- generateAndStoreKeyPair ---
     public void generateAndStoreKeyPair(String keyName, int version) throws SecretsEngineException, VaultSealedException {
         if (sealManager.isSealed()) {
             log.warn("Cannot generate JWT key pair for '{}': Vault is sealed.", keyName);
@@ -372,15 +372,25 @@ public class JwtSecretsEngine implements SecretsEngine {
         }
         log.info("Attempting to rotate JWT key '{}'", keyName);
 
+        int currentVersion;
+        int newVersion;
+        Duration rotationPeriod;
+
+        MssmProperties.JwtKeyDefinition keyDefinition = getKeyDefinition(keyName);
+        rotationPeriod = keyDefinition.rotationPeriod() != null ? keyDefinition.rotationPeriod() : Duration.ZERO;
+
         // 1. Read current config
-        JwtKeyConfig currentConfig = readKeyConfig(keyName)
-                .orElseThrow(() -> {
-                    log.warn("Cannot rotate key '{}': Configuration not found.", keyName);
-                    return new JwtKeyNotFoundException(keyName);
-                });
-        int currentVersion = currentConfig.currentVersion();
-        int newVersion = currentVersion + 1;
-        log.debug("Current version for key '{}' is {}. New version will be {}.", keyName, currentVersion, newVersion);
+        Optional<JwtKeyConfig> currentConfigOpt = readKeyConfig(keyName);
+
+        if (currentConfigOpt.isPresent()) {
+            currentVersion = currentConfigOpt.get().currentVersion();
+            newVersion = currentVersion + 1;
+            log.debug("Existing config found for key '{}'. Current version is {}. New version will be {}.", keyName, currentVersion, newVersion);
+        } else {
+            currentVersion = 0;
+            newVersion = 1;
+            log.debug("No existing config found for key '{}'. Performing initial generation for version {}.", keyName, newVersion);
+        }
 
         try {
             // 2. Generate and store the new key pair (this also audits key generation)
@@ -390,11 +400,12 @@ public class JwtSecretsEngine implements SecretsEngine {
             // 3. Create and write the updated configuration (this also audits config update)
             JwtKeyConfig newConfig = new JwtKeyConfig(
                     newVersion,
-                    currentConfig.rotationPeriod(), // Keep existing rotation period
-                    Instant.now() // Update last rotation time
+                    rotationPeriod,
+                    Instant.now()
             );
             writeKeyConfig(keyName, newConfig);
-            log.info("Successfully updated key configuration for key '{}' to version {}", keyName, newVersion);
+            log.info("Successfully {} key configuration for key '{}' to version {}",
+                    (currentVersion == 0 ? "created initial" : "updated"), keyName, newVersion);
 
             // 4. Audit the successful rotation operation itself
             auditHelper.logInternalEvent(
@@ -459,16 +470,23 @@ public class JwtSecretsEngine implements SecretsEngine {
     }
 
     private MssmProperties.JwtKeyDefinition getKeyDefinition(String keyName) throws JwtKeyNotFoundException {
-        MssmProperties.JwtProperties jwtProps = properties.jwt();
-        if (jwtProps == null || jwtProps.keys() == null) {
-            throw new JwtKeyNotFoundException("JWT configuration (mssm.jwt.keys) is missing or empty.");
+        MssmProperties.SecretsProperties secretsProps = properties.secrets();
+        if (secretsProps == null) {
+            throw new JwtKeyNotFoundException("Secrets configuration (mssm.secrets) is missing.");
         }
+        MssmProperties.JwtProperties jwtProps = secretsProps.jwt();
+        if (jwtProps == null || jwtProps.keys() == null) {
+            throw new JwtKeyNotFoundException("JWT configuration (mssm.secrets.jwt.keys) is missing or empty.");
+        }
+
         MssmProperties.JwtKeyDefinition keyDefinition = jwtProps.keys().get(keyName);
         if (keyDefinition == null) {
             throw new JwtKeyNotFoundException(keyName);
         }
         return keyDefinition;
     }
+
+
 
     private KeyPair generateKeyPair(MssmProperties.JwtKeyDefinition keyDefinition) throws SecretsEngineException {
         try {
@@ -551,7 +569,7 @@ public class JwtSecretsEngine implements SecretsEngine {
 
     /**
      * Retrieves the JSON Web Key Set (JWKS) containing the public key(s) for the specified key name.
-     * Currently retrieves only the key for the current version.
+     * Currently, retrieves only the key for the current version.
      *
      * @param keyName The name of the JWT key.
      * @return A Map representing the JWK Set JSON structure.

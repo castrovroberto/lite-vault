@@ -6,7 +6,6 @@ import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.context.properties.bind.validation.BindValidationException;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
-import org.springframework.core.convert.ConverterNotFoundException;
 
 import java.time.Duration;
 
@@ -262,17 +261,17 @@ public class ConfigurationValidationTest {
     void validateJwt_validRsa_shouldPass() {
         runnerWithBaseProps()
                 .withPropertyValues(
-                        "mssm.jwt.keys.my-rsa.type=RSA",
-                        "mssm.jwt.keys.my-rsa.size=2048"
+                        "mssm.secrets.jwt.keys.my-rsa.type=RSA",
+                        "mssm.secrets.jwt.keys.my-rsa.size=2048"
                         // rotationPeriod is optional
                 )
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     assertThat(context).hasSingleBean(MssmProperties.class);
                     MssmProperties props = context.getBean(MssmProperties.class);
-                    assertThat(props.jwt()).isNotNull();
-                    assertThat(props.jwt().keys()).containsKey("my-rsa");
-                    MssmProperties.JwtKeyDefinition keyDef = props.jwt().keys().get("my-rsa");
+                    assertThat(props.secrets().jwt()).isNotNull();
+                    assertThat(props.secrets().jwt().keys()).containsKey("my-rsa");
+                    MssmProperties.JwtKeyDefinition keyDef = props.secrets().jwt().keys().get("my-rsa");
                     assertThat(keyDef.type()).isEqualTo(MssmProperties.JwtKeyType.RSA);
                     assertThat(keyDef.size()).isEqualTo(2048);
                     assertThat(keyDef.curve()).isNull();
@@ -284,17 +283,17 @@ public class ConfigurationValidationTest {
     void validateJwt_validEc_shouldPass() {
         runnerWithBaseProps()
                 .withPropertyValues(
-                        "mssm.jwt.keys.my-ec.type=EC",
-                        "mssm.jwt.keys.my-ec.curve=P-256", // Valid curve
-                        "mssm.jwt.keys.my-ec.rotation-period=7d" // Optional
+                        "mssm.secrets.jwt.keys.my-ec.type=EC",
+                        "mssm.secrets.jwt.keys.my-ec.curve=P-256", // Valid curve
+                        "mssm.secrets.jwt.keys.my-ec.rotation-period=7d" // Optional
                 )
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     assertThat(context).hasSingleBean(MssmProperties.class);
                     MssmProperties props = context.getBean(MssmProperties.class);
-                    assertThat(props.jwt()).isNotNull();
-                    assertThat(props.jwt().keys()).containsKey("my-ec");
-                    MssmProperties.JwtKeyDefinition keyDef = props.jwt().keys().get("my-ec");
+                    assertThat(props.secrets().jwt()).isNotNull();
+                    assertThat(props.secrets().jwt().keys()).containsKey("my-ec");
+                    MssmProperties.JwtKeyDefinition keyDef = props.secrets().jwt().keys().get("my-ec");
                     assertThat(keyDef.type()).isEqualTo(MssmProperties.JwtKeyType.EC);
                     assertThat(keyDef.curve()).isEqualTo("P-256");
                     assertThat(keyDef.size()).isNull();
@@ -307,7 +306,7 @@ public class ConfigurationValidationTest {
     void validateJwt_rsaMissingSize_shouldFail() {
         runnerWithBaseProps()
                 .withPropertyValues(
-                        "mssm.jwt.keys.my-rsa.type=RSA" // Size is missing
+                        "mssm.secrets.jwt.keys.my-rsa.type=RSA" // Size is missing
                 )
                 .run(context -> {
                     assertThat(context).hasFailed();
@@ -322,8 +321,8 @@ public class ConfigurationValidationTest {
     void validateJwt_rsaSizeTooSmall_shouldFail() {
         runnerWithBaseProps()
                 .withPropertyValues(
-                        "mssm.jwt.keys.my-rsa.type=RSA",
-                        "mssm.jwt.keys.my-rsa.size=1024" // Too small
+                        "mssm.secrets.jwt.keys.my-rsa.type=RSA",
+                        "mssm.secrets.jwt.keys.my-rsa.size=1024" // Too small
                 )
                 .run(context -> {
                     assertThat(context).hasFailed();
@@ -338,9 +337,9 @@ public class ConfigurationValidationTest {
     void validateJwt_rsaSpecifiesCurve_shouldFail() {
         runnerWithBaseProps()
                 .withPropertyValues(
-                        "mssm.jwt.keys.my-rsa.type=RSA",
-                        "mssm.jwt.keys.my-rsa.size=2048",
-                        "mssm.jwt.keys.my-rsa.curve=P-256" // Curve specified for RSA
+                        "mssm.secrets.jwt.keys.my-rsa.type=RSA",
+                        "mssm.secrets.jwt.keys.my-rsa.size=2048",
+                        "mssm.secrets.jwt.keys.my-rsa.curve=P-256" // Curve specified for RSA
                 )
                 .run(context -> {
                     assertThat(context).hasFailed();
@@ -355,7 +354,7 @@ public class ConfigurationValidationTest {
     void validateJwt_ecMissingCurve_shouldFail() {
         runnerWithBaseProps()
                 .withPropertyValues(
-                        "mssm.jwt.keys.my-ec.type=EC" // Curve is missing
+                        "mssm.secrets.jwt.keys.my-ec.type=EC" // Curve is missing
                 )
                 .run(context -> {
                     assertThat(context).hasFailed();
@@ -370,8 +369,8 @@ public class ConfigurationValidationTest {
     void validateJwt_ecInvalidCurve_shouldFail() {
         runnerWithBaseProps()
                 .withPropertyValues(
-                        "mssm.jwt.keys.my-ec.type=EC",
-                        "mssm.jwt.keys.my-ec.curve=invalid-curve" // Not in allowed set
+                        "mssm.secrets.jwt.keys.my-ec.type=EC",
+                        "mssm.secrets.jwt.keys.my-ec.curve=invalid-curve" // Not in allowed set
                 )
                 .run(context -> {
                     assertThat(context).hasFailed();
@@ -386,9 +385,9 @@ public class ConfigurationValidationTest {
     void validateJwt_ecSpecifiesSize_shouldFail() {
         runnerWithBaseProps()
                 .withPropertyValues(
-                        "mssm.jwt.keys.my-ec.type=EC",
-                        "mssm.jwt.keys.my-ec.curve=P-256",
-                        "mssm.jwt.keys.my-ec.size=2048" // Size specified for EC
+                        "mssm.secrets.jwt.keys.my-ec.type=EC",
+                        "mssm.secrets.jwt.keys.my-ec.curve=P-256",
+                        "mssm.secrets.jwt.keys.my-ec.size=2048" // Size specified for EC
                 )
                 .run(context -> {
                     assertThat(context).hasFailed();
@@ -403,8 +402,8 @@ public class ConfigurationValidationTest {
     void validateJwt_missingType_shouldFail() {
         runnerWithBaseProps()
                 .withPropertyValues(
-                        // "mssm.jwt.keys.my-key.type=...", // Type is missing
-                        "mssm.jwt.keys.my-key.size=2048"
+                        // "mssm.secrets.jwt.keys.my-key.type=...", // Type is missing
+                        "mssm.secrets.jwt.keys.my-key.size=2048"
                 )
                 .run(context -> {
                     assertThat(context).hasFailed();
@@ -419,8 +418,8 @@ public class ConfigurationValidationTest {
     void validateJwt_invalidType_shouldFail() {
         runnerWithBaseProps()
                 .withPropertyValues(
-                        "mssm.jwt.keys.my-key.type=INVALID_TYPE",
-                        "mssm.jwt.keys.my-key.size=2048"
+                        "mssm.secrets.jwt.keys.my-key.type=INVALID_TYPE",
+                        "mssm.secrets.jwt.keys.my-key.size=2048"
                 )
                 .run(context -> {
                     assertThat(context).hasFailed();
@@ -437,7 +436,7 @@ public class ConfigurationValidationTest {
     void validateJwt_emptyKeysMap_shouldFail() {
         runnerWithBaseProps()
                 .withPropertyValues(
-                        "mssm.jwt.keys="
+                        "mssm.secrets.jwt.keys="
                 )
                 .run(context -> {
                     assertThat(context).hasFailed();
@@ -455,12 +454,12 @@ public class ConfigurationValidationTest {
     @DisplayName("JWT Config Validation: Should PASS if jwt section is missing entirely")
     void validateJwt_missingSection_shouldPass() {
         runnerWithBaseProps()
-                // No mssm.jwt properties provided
+                // No mssm.secrets.jwt properties provided
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     assertThat(context).hasSingleBean(MssmProperties.class);
                     MssmProperties props = context.getBean(MssmProperties.class);
-                    assertThat(props.jwt()).isNull(); // jwt property itself will be null
+                    assertThat(props.secrets()).isNull(); // jwt property itself will be null
                 });
     }
 

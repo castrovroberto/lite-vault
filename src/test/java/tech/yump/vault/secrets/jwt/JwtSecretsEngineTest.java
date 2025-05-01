@@ -50,6 +50,7 @@ import java.security.spec.InvalidKeySpecException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -117,9 +118,12 @@ class JwtSecretsEngineTest {
         JwtKeyDefinition rsaDefinition = new JwtKeyDefinition(JwtKeyType.RSA, 2048, null, null);
         Map<String, JwtKeyDefinition> keysMap = new HashMap<>();
         keysMap.put(keyName, rsaDefinition);
-        JwtProperties jwtProperties = mock(JwtProperties.class); // Mock inner class if needed
-        when(properties.jwt()).thenReturn(jwtProperties);
-        when(jwtProperties.keys()).thenReturn(keysMap);
+
+        MssmProperties.SecretsProperties secretsPropertiesMock = mock(MssmProperties.SecretsProperties.class);
+        JwtProperties jwtPropertiesMock = mock(JwtProperties.class);
+        when(properties.secrets()).thenReturn(secretsPropertiesMock);
+        when(secretsPropertiesMock.jwt()).thenReturn(jwtPropertiesMock);
+        when(jwtPropertiesMock.keys()).thenReturn(keysMap);
 
         // Mock EncryptionService
         byte[] dummyEncryptedPrivateKey = "encryptedPrivateKey".getBytes();
@@ -207,9 +211,12 @@ class JwtSecretsEngineTest {
         JwtKeyDefinition ecDefinition = new JwtKeyDefinition(JwtKeyType.EC, null, "P-256", null);
         Map<String, JwtKeyDefinition> keysMap = new HashMap<>();
         keysMap.put(keyName, ecDefinition);
-        JwtProperties jwtProperties = mock(JwtProperties.class);
-        when(properties.jwt()).thenReturn(jwtProperties);
-        when(jwtProperties.keys()).thenReturn(keysMap);
+
+        MssmProperties.SecretsProperties secretsPropertiesMock = mock(MssmProperties.SecretsProperties.class);
+        JwtProperties jwtPropertiesMock = mock(JwtProperties.class);
+        when(properties.secrets()).thenReturn(secretsPropertiesMock);
+        when(secretsPropertiesMock.jwt()).thenReturn(jwtPropertiesMock);
+        when(jwtPropertiesMock.keys()).thenReturn(keysMap);
 
         // Mock EncryptionService (same logic as RSA test)
         byte[] nonce = new byte[EncryptionService.NONCE_LENGTH_BYTE];
@@ -269,7 +276,6 @@ class JwtSecretsEngineTest {
         assertEquals("Vault is sealed", exception.getMessage());
 
         // Verify no interactions with other services occurred
-        verify(properties, never()).jwt();
         verify(encryptionService, never()).encrypt(any());
         verify(objectMapper, never()).writeValueAsBytes(any());
         verify(storageBackend, never()).put(anyString(), any());
@@ -287,9 +293,12 @@ class JwtSecretsEngineTest {
         JwtKeyDefinition rsaDefinition = new JwtKeyDefinition(JwtKeyType.RSA, 2048, null, null);
         Map<String, JwtKeyDefinition> keysMap = new HashMap<>();
         keysMap.put(keyName, rsaDefinition);
-        JwtProperties jwtProperties = mock(JwtProperties.class);
-        when(properties.jwt()).thenReturn(jwtProperties);
-        when(jwtProperties.keys()).thenReturn(keysMap);
+
+        MssmProperties.SecretsProperties secretsPropertiesMock = mock(MssmProperties.SecretsProperties.class);
+        JwtProperties jwtPropertiesMock = mock(JwtProperties.class);
+        when(properties.secrets()).thenReturn(secretsPropertiesMock);
+        when(secretsPropertiesMock.jwt()).thenReturn(jwtPropertiesMock);
+        when(jwtPropertiesMock.keys()).thenReturn(keysMap);
 
         // Mock EncryptionService to throw
         EncryptionException thrownException = new EncryptionException("Encryption failed test");
@@ -320,9 +329,12 @@ class JwtSecretsEngineTest {
         JwtKeyDefinition rsaDefinition = new JwtKeyDefinition(JwtKeyType.RSA, 2048, null, null);
         Map<String, JwtKeyDefinition> keysMap = new HashMap<>();
         keysMap.put(keyName, rsaDefinition);
-        JwtProperties jwtProperties = mock(JwtProperties.class);
-        when(properties.jwt()).thenReturn(jwtProperties);
-        when(jwtProperties.keys()).thenReturn(keysMap);
+
+        MssmProperties.SecretsProperties secretsPropertiesMock = mock(MssmProperties.SecretsProperties.class);
+        JwtProperties jwtPropertiesMock = mock(JwtProperties.class);
+        when(properties.secrets()).thenReturn(secretsPropertiesMock);
+        when(secretsPropertiesMock.jwt()).thenReturn(jwtPropertiesMock);
+        when(jwtPropertiesMock.keys()).thenReturn(keysMap);
 
         // Mock EncryptionService (successful calls)
         byte[] nonce = new byte[EncryptionService.NONCE_LENGTH_BYTE];
@@ -366,9 +378,12 @@ class JwtSecretsEngineTest {
         JwtKeyDefinition rsaDefinition = new JwtKeyDefinition(JwtKeyType.RSA, 2048, null, null);
         Map<String, JwtKeyDefinition> keysMap = new HashMap<>();
         keysMap.put(keyName, rsaDefinition);
-        JwtProperties jwtProperties = mock(JwtProperties.class);
-        when(properties.jwt()).thenReturn(jwtProperties);
-        when(jwtProperties.keys()).thenReturn(keysMap);
+
+        MssmProperties.SecretsProperties secretsPropertiesMock = mock(MssmProperties.SecretsProperties.class);
+        JwtProperties jwtPropertiesMock = mock(JwtProperties.class);
+        when(properties.secrets()).thenReturn(secretsPropertiesMock);
+        when(secretsPropertiesMock.jwt()).thenReturn(jwtPropertiesMock);
+        when(jwtPropertiesMock.keys()).thenReturn(keysMap);
 
         // Mock EncryptionService (successful first call)
         byte[] nonce = new byte[EncryptionService.NONCE_LENGTH_BYTE];
@@ -465,9 +480,23 @@ class JwtSecretsEngineTest {
 
             // --- Default Mock Behaviors for Success Path ---
             // Mock properties
-            JwtProperties jwtProperties = mock(JwtProperties.class);
-            lenient().when(properties.jwt()).thenReturn(jwtProperties);
-            lenient().when(jwtProperties.keys()).thenReturn(Map.of(keyName, testKeyDefinition));
+            // --- Default Mock Behaviors for Success Path ---
+            // Mock properties chain: properties -> secrets -> jwt -> keys
+
+            // 1. Mock the intermediate SecretsProperties object
+            MssmProperties.SecretsProperties secretsPropertiesMock = mock(MssmProperties.SecretsProperties.class);
+
+            // 2. Mock the final JwtProperties object in the chain before keys()
+            JwtProperties jwtPropertiesMock = mock(JwtProperties.class);
+
+            // 3. Mock properties.secrets() to return the secrets mock
+            lenient().when(properties.secrets()).thenReturn(secretsPropertiesMock);
+
+            // 4. Mock secretsPropertiesMock.jwt() to return the jwt mock
+            lenient().when(secretsPropertiesMock.jwt()).thenReturn(jwtPropertiesMock);
+
+            // 5. Mock jwtPropertiesMock.keys() to return the actual map
+            lenient().when(jwtPropertiesMock.keys()).thenReturn(Map.of(keyName, testKeyDefinition));
 
             // Mock readKeyConfig success
             EncryptedData encryptedConfigData = new EncryptedData(nonce, cipherConfig);
@@ -811,8 +840,11 @@ class JwtSecretsEngineTest {
             lenient().when(objectMapper.readValue(eq(currentConfigJsonBytes), eq(JwtKeyConfig.class))).thenReturn(currentConfig);
 
             // Mock dependencies for successful generateAndStoreKeyPair(keyName, newVersion)
-            lenient().when(properties.jwt()).thenReturn(mock(JwtProperties.class)); // Need jwt()
-            lenient().when(properties.jwt().keys()).thenReturn(Map.of(keyName, testKeyDefinition)); // Need keys() and the definition
+            MssmProperties.SecretsProperties secretsPropertiesMock = mock(MssmProperties.SecretsProperties.class);
+            JwtProperties jwtPropertiesMock = mock(JwtProperties.class);
+            lenient().when(properties.secrets()).thenReturn(secretsPropertiesMock);
+            lenient().when(secretsPropertiesMock.jwt()).thenReturn(jwtPropertiesMock);
+            lenient().when(jwtPropertiesMock.keys()).thenReturn(Map.of(keyName, testKeyDefinition)); // Need keys() and the definition
             // Mock the two encryption calls within generateAndStoreKeyPair
             // 1. Encrypt raw private key -> encryptedNewPrivateKeyBytes
             // 2. Encrypt material JSON -> encryptedNewMaterialBundleBytes
@@ -918,20 +950,39 @@ class JwtSecretsEngineTest {
         }
 
         @Test
-        @DisplayName("Fail: Config Not Found")
+        @DisplayName("Fail: Config Not Found (Definition Missing in Properties)") // More accurate name
         void rotateKey_configNotFound_shouldThrowJwtKeyNotFoundException() throws Exception {
             // Arrange
-            when(storageBackend.get(eq(configPath))).thenReturn(Optional.empty()); // Override setup
+
+            // --- FIX: Mock the properties chain to simulate the key definition NOT being found ---
+            JwtProperties jwtPropertiesMock = mock(JwtProperties.class);
+            MssmProperties.SecretsProperties secretsPropertiesMock = mock(MssmProperties.SecretsProperties.class);
+
+            // Make the properties chain return the mocks
+            // Use lenient() if these might conflict with @BeforeEach, or just use when() if specific to this test
+            when(properties.secrets()).thenReturn(secretsPropertiesMock);
+            when(secretsPropertiesMock.jwt()).thenReturn(jwtPropertiesMock);
+            // Simulate the keys map NOT containing the keyName
+            when(jwtPropertiesMock.keys()).thenReturn(Collections.emptyMap());
+            // Alternatively: when(jwtPropertiesMock.keys().get(eq(keyName))).thenReturn(null);
+            // --- End FIX ---
+
+            // Keep the original storage mock (optional, as getKeyDefinition should fail first now)
+            // when(storageBackend.get(eq(configPath))).thenReturn(Optional.empty());
 
             // Act & Assert
             JwtKeyNotFoundException ex = assertThrows(JwtKeyNotFoundException.class, () -> {
-                jwtSecretsEngine.rotateKey(keyName);
+                jwtSecretsEngine.rotateKey(keyName); // This should now fail in getKeyDefinition
             });
+            // Assert the message from getKeyDefinition's exception
             assertThat(ex.getMessage()).isEqualTo("JWT key configuration not found for name: " + keyName);
 
             // Verify other actions didn't happen
+            verify(storageBackend, never()).get(anyString()); // Should not even attempt to read config file
             verify(storageBackend, never()).put(anyString(), any());
-            verify(encryptionService, never()).encrypt(any()); // No generation or write config happened
+            verify(encryptionService, never()).encrypt(any());
+            verify(encryptionService, never()).decrypt(any());
+            verify(auditHelper, never()).logInternalEvent(any(), any(), any(), any(), any()); // No audit expected if definition is missing
         }
 
         @Test
@@ -1172,9 +1223,11 @@ class JwtSecretsEngineTest {
 
 
             // --- Default Mock Behaviors (Success Path - use lenient) ---
-            JwtProperties jwtProperties = mock(JwtProperties.class);
-            lenient().when(properties.jwt()).thenReturn(jwtProperties);
-            lenient().when(jwtProperties.keys()).thenReturn(Map.of(keyNameRsa, rsaDefinition, keyNameEc, ecDefinition));
+            MssmProperties.SecretsProperties secretsPropertiesMock = mock(MssmProperties.SecretsProperties.class);
+            JwtProperties jwtPropertiesMock = mock(JwtProperties.class);
+            lenient().when(properties.secrets()).thenReturn(secretsPropertiesMock);
+            lenient().when(secretsPropertiesMock.jwt()).thenReturn(jwtPropertiesMock);
+            lenient().when(jwtPropertiesMock.keys()).thenReturn(Map.of(keyNameRsa, rsaDefinition, keyNameEc, ecDefinition));
 
             // RSA Path Mocks
             lenient().when(storageBackend.get(eq(configPathRsa))).thenReturn(Optional.of(encryptedRsaConfigData));
@@ -1490,7 +1543,7 @@ class JwtSecretsEngineTest {
             // Override key definition mock to have small size
             JwtKeyDefinition smallRsaDefinition = new JwtKeyDefinition(JwtKeyType.RSA, 1024, null, null);
             JwtProperties jwtProperties = mock(JwtProperties.class);
-            when(properties.jwt()).thenReturn(jwtProperties); // Override lenient mock
+            when(properties.secrets().jwt()).thenReturn(jwtProperties); // Override lenient mock
             when(jwtProperties.keys()).thenReturn(Map.of(keyNameRsa, smallRsaDefinition));
             // Config and material read succeed (using default mocks)
 
@@ -1518,7 +1571,7 @@ class JwtSecretsEngineTest {
             // Override key definition mock to have unsupported curve
             JwtKeyDefinition badCurveEcDefinition = new JwtKeyDefinition(JwtKeyType.EC, null, "P-192", null); // Assume P-192 is unsupported
             JwtProperties jwtProperties = mock(JwtProperties.class);
-            when(properties.jwt()).thenReturn(jwtProperties); // Override lenient mock
+            when(properties.secrets().jwt()).thenReturn(jwtProperties); // Override lenient mock
             when(jwtProperties.keys()).thenReturn(Map.of(keyNameEc, badCurveEcDefinition));
             // Config and material read succeed (using default mocks)
 

@@ -69,19 +69,15 @@ class FileSystemStorageBackendTest {
     List<PolicyDefinition> dummyPolicies = Collections.emptyList();
 
     // 7. Create dummy Secrets Properties (since FileSystemStorageBackend doesn't use it)
-    MssmProperties.SecretsProperties dummySecretsProps = new MssmProperties.SecretsProperties(null);
+    MssmProperties.SecretsProperties dummySecretsProps = new MssmProperties.SecretsProperties(null, null);
 
-    // 8. Create dummy jwt props
-    MssmProperties.JwtProperties dummyJwtProperties = new MssmProperties.JwtProperties(null);
-
-    // 9. MssmProperties (Add dummySecretsProps as the 5th argument)
+    // 8. MssmProperties (Add dummySecretsProps as the 5th argument)
     MssmProperties testProperties = new MssmProperties(
             masterKeyProps,
             storageProps,
             dummyAuthProps,
             dummyPolicies,
-            dummySecretsProps,
-            dummyJwtProperties
+            dummySecretsProps
     );
 
     // Instantiate the backend with the correctly structured properties

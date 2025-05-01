@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Slf4j
 public class StaticTokenAuthFilter extends OncePerRequestFilter {
@@ -64,6 +65,29 @@ public class StaticTokenAuthFilter extends OncePerRequestFilter {
     if (this.staticAuthEnabled && this.tokenMappings.isEmpty()) {
       log.warn("Static token authentication is enabled but no token mappings are configured!");
     }
+  }
+
+  public static Authentication createAuthenticationToken(String token, List<String> policyNames) {
+    if (token == null || policyNames == null) {
+      log.error("Cannot create authentication token with null token or policy names.");
+      // Or throw IllegalArgumentException
+      return null;
+    }
+    // Convert policy names to GrantedAuthority objects, prefixed like in the filter
+    List<GrantedAuthority> authorities = policyNames.stream()
+            .map(policyName -> (GrantedAuthority) new SimpleGrantedAuthority("POLICY_" + policyName))
+            .collect(Collectors.toList()); // Use Collectors.toList() for compatibility
+
+    // Create the same type of Authentication token as the filter does
+    UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+            token,      // Principal is the token itself
+            null,       // No credentials needed/used here
+            authorities // Authorities derived from policy names
+    );
+    // Note: We don't set details (like WebAuthenticationDetails) here,
+    // as it's generally not needed for policy enforcement tests.
+    log.debug("Created mock Authentication for token '{}' with authorities: {}", token, authorities);
+    return authentication;
   }
 
   @Override

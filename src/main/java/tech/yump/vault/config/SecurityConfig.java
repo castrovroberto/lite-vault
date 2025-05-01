@@ -77,6 +77,7 @@ public class SecurityConfig {
               .authorizeHttpRequests(authz -> authz
                       .requestMatchers("/sys/seal-status", "/").permitAll()
                       .requestMatchers("/v1/jwt/jwks/**").permitAll()
+                      .requestMatchers("/actuator/**").permitAll()
                       .requestMatchers("/v1/**").authenticated()
                       .anyRequest().authenticated()
               );

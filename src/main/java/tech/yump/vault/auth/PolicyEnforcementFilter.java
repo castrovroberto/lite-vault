@@ -261,15 +261,32 @@ public class PolicyEnforcementFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(@NonNull HttpServletRequest request) throws ServletException {
         String path = request.getRequestURI();
-        boolean isPublicPath = List.of("/sys/seal-status", "/").contains(path);
-        if (isPublicPath) {
-            log.trace("Path {} is public, skipping PolicyEnforcementFilter.", path);
+
+        // Define public paths that should bypass this filter entirely
+        List<String> publicPaths = List.of(
+                "/sys/seal-status",
+                "/"
+                // Add other truly public paths if needed
+        );
+
+        // Define path prefixes that should bypass this filter
+        List<String> publicPrefixes = List.of(
+                "/v1/jwt/jwks/", // <-- ADD THIS LINE
+                "/actuator/"     // <-- Add actuator if it should also be skipped
+        );
+
+        if (publicPaths.contains(path) || publicPrefixes.stream().anyMatch(path::startsWith)) {
+            log.trace("Path {} matches a public path/prefix, skipping PolicyEnforcementFilter.", path);
             return true;
         }
+
+        // Original check for non-v1 paths (can keep or remove if covered by prefixes)
         if (!path.startsWith(API_V1_PREFIX)) {
             log.trace("Path {} is not under {}, skipping PolicyEnforcementFilter.", path, API_V1_PREFIX);
             return true;
         }
+
+        // Otherwise, the filter should run
         return false;
     }
 }

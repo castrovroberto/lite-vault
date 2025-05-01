@@ -77,7 +77,7 @@ class PolicyEnforcementFilterTest {
     @Captor
     private ArgumentCaptor<ApiError> apiErrorCaptor; // Keep for verifying ObjectMapper interaction if needed
 
-    private static final String TEST_USER = "test-token-principal";
+    private static final String TEST_USER = "test-root-token";
     private static final String READ_POLICY_NAME = "reader";
     private static final String WRITE_POLICY_NAME = "writer";
     private static final String MISSING_POLICY_NAME = "ghost";

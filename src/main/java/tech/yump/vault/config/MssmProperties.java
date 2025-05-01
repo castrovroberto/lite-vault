@@ -1,7 +1,7 @@
 package tech.yump.vault.config;
 
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.AssertTrue; // Import AssertTrue
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -42,10 +42,7 @@ public record MssmProperties(
         List<PolicyDefinition> policies,
 
         @Valid
-        SecretsProperties secrets,
-
-        @Valid
-        JwtProperties jwt
+        SecretsProperties secrets
 ) {
     // --- MasterKeyProperties ---
     @Validated
@@ -113,7 +110,10 @@ public record MssmProperties(
     @Validated
     public record SecretsProperties(
             @Valid
-            DbSecretsProperties db
+            DbSecretsProperties db,
+
+            @Valid
+            JwtProperties jwt
     ) {}
 
     @Validated
