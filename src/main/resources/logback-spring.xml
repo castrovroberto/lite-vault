@@ -1,0 +1,37 @@
+<!-- src/main/resources/logback-spring.xml -->
+<configuration debug="true">
+
+    <!-- Include Spring Boot's base configuration -->
+    <include resource="org/springframework/boot/logging/logback/base.xml"/>
+
+    <!-- Read properties from Spring environment -->
+    <springProperty scope="context" name="AUDIT_FILE_PATH" source="mssm.audit.file.path" defaultValue="logs/default-audit.log"/>
+
+    <!-- Configuration active ONLY when 'audit-file' profile is active -->
+    <springProfile name="audit-file">
+        <!-- Appender for the dedicated Audit Log File -->
+        <appender name="AUDIT_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <!-- Use the resolved property for the file path -->
+            <file>${AUDIT_FILE_PATH}</file>
+            <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+                <pattern>%msg%n</pattern>
+                <charset>UTF-8</charset>
+            </encoder>
+            <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+                <fileNamePattern>${AUDIT_FILE_PATH}.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+                <maxHistory>30</maxHistory>
+                <maxFileSize>10MB</maxFileSize>
+                <totalSizeCap>1GB</totalSizeCap>
+            </rollingPolicy>
+        </appender>
+
+        <!-- Logger for Audit Events - directs ONLY to the AUDIT_FILE appender -->
+        <logger name="tech.yump.vault.audit.FILE_AUDIT" level="INFO" additivity="false">
+            <appender-ref ref="AUDIT_FILE"/>
+        </logger>
+    </springProfile>
+
+    <!-- Root logger configuration (inherited or customized) -->
+    <!-- ... -->
+
+</configuration>
