@@ -75,7 +75,7 @@
 - **Rationale:**
     - Allows administrators to trigger key rotation on demand (F-JWT-340).
 
-#### 38. [ ] Integrate Audit Logging for JWT Actions
+#### 38. [x] Integrate Audit Logging for JWT Actions
 - **Description:**
     - Inject the `AuditBackend`.
     - Log audit events for:
@@ -85,7 +85,7 @@
 - **Rationale:**
     - Provides audit trail for key management and usage (F-CORE-130).
 
-#### 39. [ ] Write Unit Tests for JWT Engine
+#### 39. [x] Write Unit Tests for JWT Engine
 - **Description:**
     - Write unit tests for `JwtSecretsEngine`.
     - Test key generation logic for different types/sizes.
@@ -95,7 +95,7 @@
 - **Rationale:**
     - Verifies the engine's internal logic for key management and signing.
 
-#### 40. [ ] Write Integration Tests for JWT API
+#### 40. [x] Write Integration Tests for JWT API
 - **Description:**
     - Write Spring Boot integration tests (`@SpringBootTest`).
     - Configure JWT keys via properties.
