@@ -1,15 +1,22 @@
 package tech.yump.vault.api;
 
+// Import Swagger annotations
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.Map; // For returning a simple JSON object
 import tech.yump.vault.core.SealManager;
 
-/**
- * Basic controller for root path and health/status checks.
- */
-@RestController // Marks this as a controller where methods return domain objects (serialized to JSON/XML)
+import java.util.Map;
+
+@RestController
+@Tag(name = "System", description = "System information and status endpoints")
 public class RootController {
 
   private final SealManager sealManager;
@@ -18,40 +25,30 @@ public class RootController {
     this.sealManager = sealManager;
   }
 
-  /**
-   * Handles GET requests to the root path ("/").
-   * Provides a simple welcome message and status indication.
-   *
-   * @return A Map which Jackson will serialize to a JSON object.
-   */
-  @GetMapping("/") // Maps HTTP GET requests for "/" to this method
+  @GetMapping("/")
+  @Operation(
+          summary = "Root Endpoint",
+          description = "Provides a simple welcome message and status check. Does not require authentication.",
+          security = {} // Explicitly mark as not requiring authentication
+  )
+  @ApiResponse(responseCode = "200", description = "Welcome message and status.",
+          content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+                  schema = @Schema(type = "object", example = "{\"message\": \"Welcome to LiteVault API\", \"status\": \"OK\"}")))
   public Map<String, String> getRoot() {
-    // Spring Boot + Jackson will automatically convert this Map to a JSON response:
-    // { "message": "Welcome to LiteVault API", "status": "OK" }
-    return Map.of(
-        "message", "Welcome to LiteVault API",
-        "status", "OK"
-    );
+    return Map.of("message", "Welcome to LiteVault API", "status", "OK");
   }
 
-  /**
-   * Handles GET request to /sys/seal-status.
-   * Returns the current seal status of the vault.
-   *
-   * @return A map containing the seal status. e.g. {"sealed": true}
-   */
-  @GetMapping("/sys/seal-status") // <-- Map GET /sys/seal-status
+  @GetMapping("/sys/seal-status")
+  @Operation(
+          summary = "Get Seal Status",
+          description = "Returns the current seal status of the vault (true if sealed, false if unsealed). Does not require authentication.",
+          security = {} // Explicitly mark as not requiring authentication
+  )
+  @ApiResponse(responseCode = "200", description = "Seal status retrieved.",
+          content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+                  schema = @Schema(type = "object", example = "{\"sealed\": false}")))
   public Map<String, Object> getSealStatus() {
     boolean isSealed = sealManager.isSealed();
-    // Return a map that Jackson will convert to {"sealed": true/false}
     return Map.of("sealed", isSealed);
-
-        /* Alternative: Return more detailed status including the enum name
-           SealStatus status = sealManager.getSealStatus();
-           return Map.of(
-               "sealed", status == SealStatus.SEALED,
-               "status_name", status.name() // e.g., "SEALED" or "UNSEALED"
-           );
-        */
   }
 }

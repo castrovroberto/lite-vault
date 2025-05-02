@@ -17,7 +17,7 @@
     - Moves closer to F-CORE-130's "immutable" goal by separating audit logs.
     - Provides a more parseable audit trail than general application logs.
 
-#### 42. [ ] Implement DB Lease Revocation
+#### 42. [x] Implement DB Lease Revocation
 - **Description:**
     - Add logic to `PostgresSecretsEngine` (or `LeaseManager`) to revoke credentials. This involves:
         - Retrieving the configured SQL *revocation* template for the role associated with a lease.

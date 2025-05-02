@@ -70,4 +70,4 @@ application*.yml
 secrets.*
 
 # Custom project files
-/project
+/project/

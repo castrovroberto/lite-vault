@@ -1,18 +1,20 @@
 package tech.yump.vault.api.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.UUID;
 
-/**
- * DTO representing the response for a dynamic database credential request.
- *
- * @param leaseId            The unique ID associated with this credential lease.
- * @param username           The generated database username.
- * @param password           The generated database password.
- * @param leaseDurationSeconds The duration (in seconds) for which this lease is valid.
- */
+@Schema(description = "Response containing dynamically generated database credentials and lease information.")
 public record DbCredentialsResponse(
+        @Schema(description = "Unique identifier for the lease associated with these credentials.", requiredMode = Schema.RequiredMode.REQUIRED)
         UUID leaseId,
+
+        @Schema(description = "The dynamically generated database username.", example = "lv-readonly-app-role-a1b2c3d4", requiredMode = Schema.RequiredMode.REQUIRED)
         String username,
+
+        @Schema(description = "The dynamically generated database password.", example = "S3cr3tP@ssw0rd!", requiredMode = Schema.RequiredMode.REQUIRED)
         String password,
-        long leaseDurationSeconds // Represent duration as seconds for simple JSON
-) {}
+
+        @Schema(description = "The duration for which these credentials are valid, in seconds.", example = "3600", requiredMode = Schema.RequiredMode.REQUIRED)
+        long leaseDurationSeconds // Assuming the service converts TTL to seconds
+) {
+}

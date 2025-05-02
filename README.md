@@ -155,6 +155,23 @@ To provide a secure, centralized system for managing dynamic database credential
 
 The server should start on `https://localhost:8443`. You can test API endpoints using `curl` or the provided `lite-vault-cli.sh` script (remember to use `-k` for the self-signed certificate and provide the `X-Vault-Token` header).
 
+## API Documentation
+
+This project uses `springdoc-openapi` to generate interactive API documentation using the OpenAPI v3 specification.
+
+Once the application is running (e.g., using the `dev` profile):
+
+*   **Swagger UI:** https://localhost:8443/swagger-ui.html
+  *   Provides a web interface to browse, understand, and test the API endpoints.
+  *   For protected endpoints, use the "Authorize" button (top right) and provide a valid `X-Vault-Token` (e.g., from `application-dev.yml`).
+*   **OpenAPI Spec (JSON):** https://localhost:8443/v3/api-docs
+  *   The raw OpenAPI specification in JSON format.
+*   **OpenAPI Spec (YAML):** https://localhost:8443/v3/api-docs.yaml
+  *   The raw OpenAPI specification in YAML format.
+
+*(Note: URLs assume the application is running locally with the `dev` profile configuration: HTTPS on port 8443. Adjust if necessary.)*
+
+
 **Example API Calls:**
 *   **KV Read:** `curl -k -H "X-Vault-Token: {token}" https://localhost:8443/v1/kv/data/path/to/secret`
 *   **DB Credential Generation:** `curl -k -H "X-Vault-Token: {token}" https://localhost:8443/v1/db/creds/{role_name}`
