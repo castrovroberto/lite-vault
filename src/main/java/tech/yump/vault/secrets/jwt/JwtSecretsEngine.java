@@ -1,4 +1,3 @@
-// Applying changes to /Users/robertocastro/dev/lite-vault/src/main/java/tech/yump/vault/secrets/jwt/JwtSecretsEngine.java
 package tech.yump.vault.secrets.jwt;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -166,8 +165,6 @@ public class JwtSecretsEngine implements SecretsEngine {
         }
     }
 
-
-    // --- Task 34 Methods (Metadata Handling) ---
     private String getKeyConfigPath(String keyName) {
         return String.format(KEY_CONFIG_PATH_FORMAT, keyName);
     }

@@ -1256,6 +1256,50 @@ class JwtSecretsEngineTest {
             // Removed mocks related to reading/parsing config files as they aren't hit by getJwks
         }
 
+        // Inside the GetJwksTests nested class...
+
+        @Test
+        @DisplayName("Fail: No Key Versions Found in Storage (Directory Exists but Empty)")
+        void getJwks_whenNoVersionsFoundInStorage_shouldThrowJwtKeyNotFoundException() throws Exception {
+            // Arrange
+            // Key definition exists (mocked in setup)
+            // Versions directory exists (mocked in setup to return true for isDirectory)
+            // Mock listDirectory to return an empty list
+            when(storageBackend.listDirectory(eq(relativeVersionsPathRsa))).thenReturn(Collections.emptyList());
+
+            // Act & Assert
+            JwtKeyNotFoundException ex = assertThrows(JwtKeyNotFoundException.class, () -> {
+                jwtSecretsEngine.getJwks(keyNameRsa);
+            });
+            // This is the crucial check - ensure it throws when the list is empty after checking the directory
+            assertThat(ex.getMessage()).isEqualTo("No valid key versions found for key: " + keyNameRsa);
+
+            // Verify interactions
+            verify(storageBackend).isDirectory(eq(relativeVersionsPathRsa)); // Checked directory existence
+            verify(storageBackend).listDirectory(eq(relativeVersionsPathRsa)); // Checked directory contents
+            verify(storageBackend, never()).get(startsWith("jwt/keys/" + keyNameRsa + "/versions/")); // Never tried to get specific version files
+            verify(encryptionService, never()).decrypt(any()); // No decryption attempted
+            verify(objectMapper, never()).readValue(any(byte[].class), eq(JwtSecretsEngine.KEY_MATERIAL_TYPE_REF)); // No parsing attempted
+
+            // Verify failure audit log
+            ArgumentCaptor<Map<String, Object>> auditCaptor = ArgumentCaptor.forClass(Map.class);
+            verify(auditHelper).logInternalEvent(
+                    eq("jwt_operation"),
+                    eq("get_jwks"),
+                    eq("failure"), // Expect failure outcome
+                    isNull(),
+                    auditCaptor.capture()
+            );
+            assertThat(auditCaptor.getValue())
+                    .containsEntry("key_name", keyNameRsa)
+                    .containsEntry("error", ex.getMessage()); // Check error message in audit
+        }
+
+        // --- Keep the existing tests below this one ---
+        // e.g., getJwks_versionsDirectoryNotFound()
+        // e.g., getJwks_isDirectoryThrowsStorageException()
+        // etc.
+
         @Test
         @DisplayName("Success: Should return JWKS with single RSA key")
         void getJwks_successRsa() throws Exception {

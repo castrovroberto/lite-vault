@@ -61,6 +61,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+// Integration tests covering Phase 5 of mssm-hardening-plan.md
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -82,14 +83,10 @@ class JwtControllerIntegrationTest {
     @Autowired
     private SealManager sealManager;
 
-    // *** MOVED @MockitoBean HERE (as per steps.md) ***
-    // This mock will now be used by the AuthorizationTests nested class.
-    @MockitoBean
-    private JwtSecretsEngine jwtSecretsEngine;
-
     // Strategy 3: Remove AuditHelper verification from integration tests
     // @SpyBean // Removed SpyBean
     // private AuditHelper auditHelper; // Remove or keep just @Autowired if needed elsewhere
+    // Task 5.6: Audit Log Verification - Intentionally removed from these tests.
 
     private static Path testStoragePath;
 
@@ -111,6 +108,7 @@ class JwtControllerIntegrationTest {
     @TempDir
     static Path staticTempDir; // Static TempDir persists across tests in the class
 
+    // Covers Task 4.5: Define mssm.storage.filesystem.path using @TempDir and @DynamicPropertySource
     @DynamicPropertySource
     static void overrideStoragePath(DynamicPropertyRegistry registry) {
         testStoragePath = staticTempDir.resolve("jwt-integration-test-storage");
@@ -118,6 +116,7 @@ class JwtControllerIntegrationTest {
         log.info("Overriding storage path for tests to: {}", testStoragePath);
     }
 
+    // Covers Task 4.10: Implement @BeforeEach to unseal the vault
     @BeforeEach
     void setUp() throws Exception {
         log.info("===== Running @BeforeEach Cleanup and Unseal =====");
@@ -181,12 +180,15 @@ class JwtControllerIntegrationTest {
 
     @Nested
     @DisplayName("Strategy 1 & 5: RSA Key Lifecycle Tests (Focused & Robust Assertions)")
+            // Covers Task 5.1 & 5.2: RSA Key Lifecycle
     class RsaLifecycleTests {
         private final Map<String, Object> payload = Map.of("sub", "integration-test-user", "scope", "test");
         private final String jwksPath = String.format(JWKS_PATH_FORMAT, RSA_KEY_NAME);
         private final String rotatePath = String.format(ROTATE_PATH_FORMAT, RSA_KEY_NAME);
         private final String signPath = String.format(SIGN_PATH_FORMAT, RSA_KEY_NAME);
 
+        // Covers Task 5.1: GET /jwks -> 404 (Initial State)
+        // Covers Task 5.1: POST /sign -> 404 (Initial State - implicitly, as key doesn't exist)
         @Test
         @DisplayName("JWKS: Initial request returns 404")
         void jwks_initial_shouldBeNotFound() throws Exception {
@@ -196,6 +198,8 @@ class JwtControllerIntegrationTest {
             // Audit verification removed
         }
 
+        // Covers Task 5.1: POST /rotate -> 204 (Initial Rotation)
+        // Covers Task 5.1: Verify storage files (config.json, versions/1.json)
         @Test
         @DisplayName("Rotate: Initial rotation succeeds (204)")
         void rotate_initial_shouldSucceed() throws Exception {
@@ -210,6 +214,7 @@ class JwtControllerIntegrationTest {
             // Audit verification removed
         }
 
+        // Covers Task 5.1: GET /jwks -> 200, validate JWKS (v1)
         @Test
         @DisplayName("JWKS: Contains only v1 after initial rotation")
         void jwks_afterFirstRotation_shouldContainV1() throws Exception {
@@ -232,6 +237,9 @@ class JwtControllerIntegrationTest {
             // Audit verification removed
         }
 
+        // Covers Task 5.1: POST /sign -> 200, Get JWT (v1)
+        // Covers Task 5.1: Decode JWT: Verify header (kid, alg), payload
+        // Covers Task 5.1: Verify JWT signature using extracted public key (v1) - partially, verification done later
         @Test
         @DisplayName("Sign: Signing after initial rotation uses v1 key")
         void sign_afterFirstRotation_shouldUseV1() throws Exception {
@@ -256,6 +264,8 @@ class JwtControllerIntegrationTest {
             // Audit verification removed
         }
 
+        // Covers Task 5.2: POST /rotate -> 204 (Second Rotation)
+        // Covers Task 5.2: Verify storage file versions/2.json exists
         @Test
         @DisplayName("Rotate: Second rotation succeeds (204)")
         void rotate_second_shouldSucceed() throws Exception {
@@ -274,6 +284,9 @@ class JwtControllerIntegrationTest {
             // Audit verification removed
         }
 
+        // Covers Task 5.2: POST /sign -> 200, Get JWT (v2)
+        // Covers Task 5.2: Decode JWT (v2): Verify header (kid, alg)
+        // Covers Task 5.2: Verify JWT (v2) signature using extracted public key (v2) - partially, verification done later
         @Test
         @DisplayName("Sign: Signing after second rotation uses v2 key")
         void sign_afterSecondRotation_shouldUseV2() throws Exception {
@@ -301,6 +314,7 @@ class JwtControllerIntegrationTest {
             // Audit verification removed
         }
 
+        // Covers Task 5.2: GET /jwks -> 200, validate JWKS has two RSA keys (v1, v2)
         @Test
         @DisplayName("JWKS: Contains v1 and v2 after second rotation")
         void jwks_afterSecondRotation_shouldContainV1AndV2() throws Exception {
@@ -326,6 +340,7 @@ class JwtControllerIntegrationTest {
             // Audit verification removed
         }
 
+        // Covers Task 5.2: Verify JWT (v1, from Task 5.1) signature using the JWKS containing v1 & v2
         @Test
         @DisplayName("Verify: JWT signed with v1 key is verifiable using JWKS containing v1 and v2")
         void verify_v1Jwt_withV1AndV2Jwks() throws Exception {
@@ -365,6 +380,7 @@ class JwtControllerIntegrationTest {
 
     @Nested
     @DisplayName("Strategy 1 & 5: EC Key Lifecycle Tests (Focused & Robust Assertions)")
+            // Covers Task 5.3: Repeat Lifecycle for EC Key
     class EcLifecycleTests {
         // Similar structure to RsaLifecycleTests, but using EC_KEY_NAME, EC_SIGNING_TOKEN, EC public keys, and ES256
         private final Map<String, Object> payload = Map.of("sub", "ec-test-user", "roles", List.of("user"));
@@ -372,6 +388,7 @@ class JwtControllerIntegrationTest {
         private final String rotatePath = String.format(ROTATE_PATH_FORMAT, EC_KEY_NAME);
         private final String signPath = String.format(SIGN_PATH_FORMAT, EC_KEY_NAME);
 
+        // Covers Task 5.3 (via 5.1): GET /jwks -> 404 (Initial State)
         @Test
         @DisplayName("JWKS: Initial request returns 404")
         void jwks_initial_shouldBeNotFound() throws Exception {
@@ -380,6 +397,7 @@ class JwtControllerIntegrationTest {
                     .andExpect(jsonPath("$.message").value("JWT key configuration or version not found: JWT key configuration not found for name: No key versions found for key: " + EC_KEY_NAME));
         }
 
+        // Covers Task 5.3 (via 5.1): POST /rotate -> 204 (Initial Rotation) & Verify storage file v1
         @Test
         @DisplayName("Rotate: Initial rotation succeeds (204)")
         void rotate_initial_shouldSucceed() throws Exception {
@@ -390,6 +408,7 @@ class JwtControllerIntegrationTest {
             assertThat(Files.exists(version1Path)).isTrue();
         }
 
+        // Covers Task 5.3 (via 5.1): GET /jwks -> 200, validate JWKS (v1)
         @Test
         @DisplayName("JWKS: Contains only v1 after initial rotation")
         void jwks_afterFirstRotation_shouldContainV1() throws Exception {
@@ -406,6 +425,7 @@ class JwtControllerIntegrationTest {
                     .andExpect(jsonPath("$.keys[0].alg").value("ES256"));
         }
 
+        // Covers Task 5.3 (via 5.1): POST /sign -> 200 (v1) & Decode JWT (v1)
         @Test
         @DisplayName("Sign: Signing after initial rotation uses v1 key")
         void sign_afterFirstRotation_shouldUseV1() throws Exception {
@@ -427,6 +447,7 @@ class JwtControllerIntegrationTest {
             assertThat(signedJWT.getJWTClaimsSet().getSubject()).isEqualTo("ec-test-user");
         }
 
+        // Covers Task 5.3 (via 5.2): POST /rotate (second) -> 204 & Verify storage file v2
         @Test
         @DisplayName("Rotate: Second rotation succeeds (204)")
         void rotate_second_shouldSucceed() throws Exception {
@@ -442,6 +463,7 @@ class JwtControllerIntegrationTest {
             assertThat(Files.exists(version2Path)).isTrue();
         }
 
+        // Covers Task 5.3 (via 5.2): POST /sign -> 200 (v2) & Decode JWT (v2)
         @Test
         @DisplayName("Sign: Signing after second rotation uses v2 key")
         void sign_afterSecondRotation_shouldUseV2() throws Exception {
@@ -466,6 +488,7 @@ class JwtControllerIntegrationTest {
             assertThat(signedJWT.getJWTClaimsSet().getSubject()).isEqualTo("ec-user-v2");
         }
 
+        // Covers Task 5.3 (via 5.2): GET /jwks -> 200 (v1, v2)
         @Test
         @DisplayName("JWKS: Contains v1 and v2 after second rotation")
         void jwks_afterSecondRotation_shouldContainV1AndV2() throws Exception {
@@ -483,6 +506,7 @@ class JwtControllerIntegrationTest {
                     .andExpect(jsonPath("$.keys[1].kid").value(EC_KEY_NAME + "-1")); // V1 second
         }
 
+        // Covers Task 5.3 (via 5.2): Verify JWT (v1) signature using JWKS (v1 & v2)
         @Test
         @DisplayName("Verify: JWT signed with v1 key is verifiable using JWKS containing v1 and v2")
         void verify_v1Jwt_withV1AndV2Jwks() throws Exception {
@@ -523,12 +547,13 @@ class JwtControllerIntegrationTest {
     @Nested
     @DisplayName("Strategy 2: Security/Authorization Tests (Mocked Engine)")
     @TestInstance(TestInstance.Lifecycle.PER_CLASS) // Optional: Use if @BeforeAll is needed
+            // Covers Task 5.4: Security Tests
     class AuthorizationTests {
 
         // *** REMOVED @MockitoBean from here (as per steps.md) ***
         // The field jwtSecretsEngine is now inherited from the outer class
-        // @MockitoBean
-        // private JwtSecretsEngine jwtSecretsEngine;
+        @MockitoBean
+        private JwtSecretsEngine jwtSecretsEngine;
 
         private final String rotatePathRsa = String.format(ROTATE_PATH_FORMAT, RSA_KEY_NAME);
         private final String signPathRsa = String.format(SIGN_PATH_FORMAT, RSA_KEY_NAME);
@@ -554,6 +579,7 @@ class JwtControllerIntegrationTest {
         }
 
 
+        // Covers Task 5.4: /rotate with admin-token -> 204 (Success case)
         @Test
         @DisplayName("/rotate POST with Root Token should succeed (204)")
         void rotate_withRootToken_shouldSucceed() throws Exception {
@@ -566,6 +592,7 @@ class JwtControllerIntegrationTest {
             // Audit verification removed
         }
 
+        // Covers Task 5.4: /rotate with wrong token (no policy) -> 403
         @Test
         @DisplayName("/rotate POST with wrong Token (no policy) should fail (403)")
         void rotate_withNoPolicyToken_shouldFail403() throws Exception {
@@ -578,6 +605,7 @@ class JwtControllerIntegrationTest {
             // Audit verification removed
         }
 
+        // Covers Task 5.4: /rotate without token -> 401/403
         @Test
         @DisplayName("/rotate POST without Token should fail (403 - Forbidden by Security Filter)")
         void rotate_withoutToken_shouldFail403() throws Exception {
@@ -589,6 +617,7 @@ class JwtControllerIntegrationTest {
             // Audit verification removed
         }
 
+        // Covers Task 5.4: /rotate with invalid token -> 401/403
         @Test
         @DisplayName("/rotate POST with invalid token returns 403 (Forbidden by Policy)")
         void rotateWithInvalidToken_shouldReturn403() throws Exception {
@@ -598,6 +627,7 @@ class JwtControllerIntegrationTest {
             verify(jwtSecretsEngine, never()).rotateKey(anyString());
         }
 
+        // Covers Task 5.4: /rotate with signing-token -> 403
         @Test
         @DisplayName("/rotate POST with rsa-signing-token returns 403 (Forbidden by Policy)")
         void rotateWithSigningToken_shouldReturn403() throws Exception {
@@ -607,6 +637,7 @@ class JwtControllerIntegrationTest {
             verify(jwtSecretsEngine, never()).rotateKey(anyString());
         }
 
+        // Covers Task 5.4: /sign with specific signer token -> 200 (Success case)
         @Test
         @DisplayName("/sign POST with specific Signer Token should succeed (200)")
         void sign_withSignerToken_shouldSucceed() throws Exception {
@@ -622,6 +653,7 @@ class JwtControllerIntegrationTest {
             // Audit verification removed
         }
 
+        // Covers Task 5.4: /sign with admin-token -> 200 (policy allows)
         @Test
         @DisplayName("/sign POST with Root Token should succeed (200)")
         void sign_withRootToken_shouldSucceed() throws Exception {
@@ -637,6 +669,7 @@ class JwtControllerIntegrationTest {
             // Audit verification removed
         }
 
+        // Covers Task 5.4: /sign with wrong token (no policy) -> 403
         @Test
         @DisplayName("/sign POST with wrong Token (no policy) should fail (403)")
         void sign_withNoPolicyToken_shouldFail403() throws Exception {
@@ -651,6 +684,7 @@ class JwtControllerIntegrationTest {
             // Audit verification removed
         }
 
+        // Covers Task 5.4: /sign without token -> 401/403
         @Test
         @DisplayName("/sign POST without Token should fail (403 - Forbidden by Security Filter)")
         void sign_withoutToken_shouldReturn403() throws Exception {
@@ -665,6 +699,7 @@ class JwtControllerIntegrationTest {
             // Audit verification removed
         }
 
+        // Covers Task 5.4: /sign with invalid token -> 401/403
         @Test
         @DisplayName("/sign POST with invalid token returns 403 (Forbidden by Policy)")
         void signWithInvalidToken_shouldReturn403() throws Exception {
@@ -677,6 +712,7 @@ class JwtControllerIntegrationTest {
         }
 
 
+        // Covers Task 5.4: /jwks without token -> 200
         @Test
         @DisplayName("/jwks GET without token returns 200 OK (Public Endpoint)")
         void jwks_isPublic_shouldSucceed() throws Exception {
@@ -695,6 +731,7 @@ class JwtControllerIntegrationTest {
 
     @Nested
     @DisplayName("Strategy 5: Error Handling Tests (Robust Assertions)")
+            // Covers Task 5.5: Error Handling Tests
     class ErrorHandlingTests {
         // Constants for paths...
         private final String nonExistentKey = "no-such-key-exists";
@@ -713,6 +750,7 @@ class JwtControllerIntegrationTest {
             return map -> value.equals(map.get("error_type")) && map.size() == 1; // Specific check for vault_sealed
         }
 
+        // Covers Task 5.5: POST /rotate/non-existent-key -> 404
         @Test
         @DisplayName("Rotate non-existent key should fail (404)")
         void rotate_whenKeyNotFound_then404() throws Exception {
@@ -724,6 +762,7 @@ class JwtControllerIntegrationTest {
             // Audit verification removed
         }
 
+        // Covers Task 5.5: POST /sign/non-existent-key -> 404
         @Test
         @DisplayName("Sign non-existent key should fail (404)")
         void sign_whenKeyNotFound_then404() throws Exception {
@@ -737,6 +776,7 @@ class JwtControllerIntegrationTest {
             // Audit verification removed
         }
 
+        // Covers Task 5.5: GET /jwks/non-existent-key -> 404
         @Test
         @DisplayName("JWKS for non-existent key should fail (404)")
         void getJwks_whenKeyNotFound_then404() throws Exception {
@@ -747,6 +787,7 @@ class JwtControllerIntegrationTest {
             // Audit verification removed
         }
 
+        // Covers Task 5.5: POST /sign/{key} with malformed JSON body -> 400
         @Test
         @DisplayName("Sign with invalid JSON payload should fail (400)")
         void sign_withInvalidPayload_then400() throws Exception {
@@ -768,6 +809,7 @@ class JwtControllerIntegrationTest {
             // Audit verification removed
         }
 
+        // Covers Task 5.5: Seal vault, POST /sign/{key} -> 503, Unseal vault
         @Test
         @DisplayName("Sign when Vault is Sealed should fail (503)")
         void sign_whenVaultSealed_then503() throws Exception {
@@ -797,6 +839,7 @@ class JwtControllerIntegrationTest {
             sealManager.unseal(properties.master().b64());
         }
 
+        // Covers Task 5.5: Seal vault, POST /rotate/{key} -> 503, Unseal vault
         @Test
         @DisplayName("Rotate when Vault is Sealed should fail (503)")
         void rotate_whenVaultSealed_then503() throws Exception {
@@ -817,6 +860,7 @@ class JwtControllerIntegrationTest {
             sealManager.unseal(properties.master().b64());
         }
 
+        // Covers Task 5.5: Seal vault, GET /jwks/{key} -> 503, Unseal vault
         @Test
         @DisplayName("JWKS when Vault is Sealed should fail (503)")
         void getJwks_whenVaultSealed_then503() throws Exception {

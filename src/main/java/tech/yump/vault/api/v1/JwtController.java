@@ -37,6 +37,36 @@ public class JwtController {
 
     public record JwtResponse(String jwt) {}
 
+    @PostMapping("/sign/{keyName}")
+    public ResponseEntity<JwtResponse> signJwt(
+            @PathVariable String keyName,
+            @RequestBody Map<String, Object> claims
+    ) {
+        log.info("Controller: Received request to sign JWT using key: {}", keyName);
+        String operation = "sign_jwt"; // For audit context
+
+        try {
+            String jwtString = jwtSecretsEngine.signJwt(keyName, claims);
+            log.info("Controller: Successfully signed JWT using key '{}'", keyName);
+
+            // Audit success (HTTP level)
+            auditHelper.logHttpEvent(
+                    "jwt_operation",
+                    operation,
+                    "success",
+                    HttpStatus.OK.value(),
+                    null,
+                    Map.of("key_name", keyName)
+            );
+
+            return ResponseEntity.ok(new JwtResponse(jwtString));
+        } catch (Exception e) {
+            // Let exception handlers manage audit logging for failures
+            // The engine itself will log internal signing failures
+            throw e;
+        }
+    }
+
     /**
      * Retrieves the JSON Web Key Set (JWKS) for the specified key name.
      * This endpoint is typically public and does not require authentication.
@@ -45,7 +75,7 @@ public class JwtController {
      * @return A ResponseEntity containing the JWK Set as a Map on success (200 OK),
      *         or an error response handled by exception handlers (404, 503, 500).
      */
-    @GetMapping("/jwks/{keyName}") // Maps GET requests to /v1/jwt/jwks/{keyName}
+    @GetMapping("/jwks/{keyName}")
     public ResponseEntity<Map<String, Object>> getJsonWebKeySet(@PathVariable String keyName) {
         log.info("Controller: Received request for JWKS for key: {}", keyName);
         String operation = "get_jwks"; // For audit context
@@ -73,36 +103,6 @@ public class JwtController {
             // defined in this controller. The handlers will log the failure audit event
             // and return the appropriate error response (404, 503, 500).
             log.debug("Controller: Exception occurred during JWKS retrieval for key '{}', delegating to handler.", keyName, e);
-            throw e;
-        }
-    }
-
-    @PostMapping("/sign/{keyName}")
-    public ResponseEntity<JwtResponse> signJwt(
-            @PathVariable String keyName,
-            @RequestBody Map<String, Object> claims
-    ) {
-        log.info("Controller: Received request to sign JWT using key: {}", keyName);
-        String operation = "sign_jwt"; // For audit context
-
-        try {
-            String jwtString = jwtSecretsEngine.signJwt(keyName, claims);
-            log.info("Controller: Successfully signed JWT using key '{}'", keyName);
-
-            // Audit success (HTTP level)
-            auditHelper.logHttpEvent(
-                    "jwt_operation",
-                    operation,
-                    "success",
-                    HttpStatus.OK.value(),
-                    null,
-                    Map.of("key_name", keyName)
-            );
-
-            return ResponseEntity.ok(new JwtResponse(jwtString));
-        } catch (Exception e) {
-            // Let exception handlers manage audit logging for failures
-            // The engine itself will log internal signing failures
             throw e;
         }
     }
