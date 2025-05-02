@@ -139,6 +139,18 @@
       <scope>test</scope>
       <!-- Version managed by Spring Boot Parent -->
     </dependency>
+    <dependency>
+      <groupId>org.codehaus.janino</groupId>
+      <artifactId>janino</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.awaitility</groupId>
+      <artifactId>awaitility</artifactId>
+      <version>4.2.1</version> <!-- Use the latest version -->
+      <scope>test</scope>
+    </dependency>
+
+
 
   </dependencies>
 

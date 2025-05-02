@@ -71,13 +71,20 @@ class FileSystemStorageBackendTest {
     // 7. Create dummy Secrets Properties (since FileSystemStorageBackend doesn't use it)
     MssmProperties.SecretsProperties dummySecretsProps = new MssmProperties.SecretsProperties(null, null);
 
-    // 8. MssmProperties (Add dummySecretsProps as the 5th argument)
+    // 8. Create dummy Audit Properties (since FileSystemStorageBackend doesn't use it)
+    MssmProperties.AuditProperties.FileAuditProperties dummyFileAuditProps =
+            new MssmProperties.AuditProperties.FileAuditProperties(null);
+    MssmProperties.AuditProperties dummyAuditProps
+            = new MssmProperties.AuditProperties("slf4j", dummyFileAuditProps);
+
+    // 9. MssmProperties (Add dummySecretsProps as the 5th argument)
     MssmProperties testProperties = new MssmProperties(
             masterKeyProps,
             storageProps,
             dummyAuthProps,
             dummyPolicies,
-            dummySecretsProps
+            dummySecretsProps,
+            dummyAuditProps
     );
 
     // Instantiate the backend with the correctly structured properties

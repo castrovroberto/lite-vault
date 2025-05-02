@@ -42,8 +42,18 @@ public record MssmProperties(
         List<PolicyDefinition> policies,
 
         @Valid
-        SecretsProperties secrets
+        SecretsProperties secrets,
+
+        @Valid
+        @NotNull
+        AuditProperties audit
 ) {
+    public MssmProperties {
+        if (audit == null) {
+            audit = new AuditProperties(null, null);
+        }
+    }
+
     // --- MasterKeyProperties ---
     @Validated
     public record MasterKeyProperties(
@@ -237,5 +247,69 @@ public record MssmProperties(
             }
             return true; // Skip if not EC
         }
+    }
+
+    // --- AuditProperties ---
+    /**
+     * Configuration for the Audit Logging system.
+     */
+    @Validated
+    public record AuditProperties(
+
+            /**
+             * The type of audit backend to use.
+             * Options: "slf4j" (default), "file".
+             */
+            @NotBlank(message = "Audit backend type (mssm.audit.backend) must be specified.")
+            String backend,
+
+            /**
+             * Configuration specific to the file audit backend.
+             * Only relevant if mssm.audit.backend is "file".
+             */
+            @Valid
+            @NotNull
+            FileAuditProperties file
+
+    ) {
+        public AuditProperties {
+            // Default backend to "slf4j" if not specified or blank
+            if (backend == null || backend.isBlank()) {
+                backend = "slf4j";
+            }
+            // Initialize file properties if null
+            if (file == null) {
+                file = new FileAuditProperties(null); // Path default handled by application.yml/Logback
+            }
+        }
+
+        /**
+         * Configuration specific to the 'file' audit backend.
+         */
+        @Validated
+        public record FileAuditProperties(
+                /**
+                 * The path to the audit log file.
+                 * Example: /var/log/mssm/audit.log or logs/audit.log
+                 * This path is primarily used by Logback configuration via <springProperty name="AUDIT_FILE_PATH" source="mssm.audit.file.path">.
+                 * A default value should be provided in application.yml or logback-spring.xml.
+                 * Validation that the path is set when backend=file should ideally happen
+                 * either in Logback config or conditionally in the AuditConfiguration bean setup.
+                 */
+                String path // No @NotBlank here; let Logback/config handle the default/requirement
+        ) {
+            /**
+             * The property name used to configure the audit file path in Logback.
+             */
+            public static final String PATH_PROPERTY = "mssm.audit.file.path";
+
+            // Compact constructor (optional, as default path is best set externally)
+            // public FileAuditProperties {
+            //     if (path == null || path.isBlank()) {
+            //         path = "logs/mssm-audit.log"; // Example default, but prefer external config
+            //     }
+            // }
+        }
+
     }
 }
