@@ -22,6 +22,9 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+// Import assertThrows and assertSame
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -57,6 +60,7 @@ class DbCredentialServiceImplTest {
     }
 
     // --- generateCredentialsForRole Tests ---
+    // (Keep existing tests for generateCredentialsForRole, update exception propagation if desired)
 
     @Test
     @DisplayName("generateCredentialsForRole: Should call engine and map Lease to Response DTO on success")
@@ -119,11 +123,14 @@ class DbCredentialServiceImplTest {
     @DisplayName("generateCredentialsForRole: Should propagate RoleNotFoundException from engine")
     void generateCredentialsForRole_PropagatesRoleNotFound() {
         // Arrange
-        when(mockPostgresEngine.generateCredentials(TEST_ROLE)).thenThrow(new RoleNotFoundException(TEST_ROLE));
+        RoleNotFoundException expectedException = new RoleNotFoundException(TEST_ROLE);
+        when(mockPostgresEngine.generateCredentials(TEST_ROLE)).thenThrow(expectedException);
 
-        // Act & Assert
-        assertThatThrownBy(() -> dbCredentialService.generateCredentialsForRole(TEST_ROLE))
-                .isInstanceOf(RoleNotFoundException.class);
+        // Act & Assert using assertThrows and assertSame
+        RoleNotFoundException thrown = assertThrows(RoleNotFoundException.class, () -> {
+            dbCredentialService.generateCredentialsForRole(TEST_ROLE);
+        });
+        assertSame(expectedException, thrown);
 
         verify(mockPostgresEngine, times(1)).generateCredentials(TEST_ROLE);
     }
@@ -132,11 +139,14 @@ class DbCredentialServiceImplTest {
     @DisplayName("generateCredentialsForRole: Should propagate VaultSealedException from engine")
     void generateCredentialsForRole_PropagatesVaultSealed() {
         // Arrange
-        when(mockPostgresEngine.generateCredentials(TEST_ROLE)).thenThrow(new VaultSealedException("Sealed"));
+        VaultSealedException expectedException = new VaultSealedException("Sealed");
+        when(mockPostgresEngine.generateCredentials(TEST_ROLE)).thenThrow(expectedException);
 
-        // Act & Assert
-        assertThatThrownBy(() -> dbCredentialService.generateCredentialsForRole(TEST_ROLE))
-                .isInstanceOf(VaultSealedException.class);
+        // Act & Assert using assertThrows and assertSame
+        VaultSealedException thrown = assertThrows(VaultSealedException.class, () -> {
+            dbCredentialService.generateCredentialsForRole(TEST_ROLE);
+        });
+        assertSame(expectedException, thrown);
 
         verify(mockPostgresEngine, times(1)).generateCredentials(TEST_ROLE);
     }
@@ -145,15 +155,18 @@ class DbCredentialServiceImplTest {
     @DisplayName("generateCredentialsForRole: Should propagate SecretsEngineException from engine")
     void generateCredentialsForRole_PropagatesSecretsEngineException() {
         // Arrange
-        when(mockPostgresEngine.generateCredentials(TEST_ROLE)).thenThrow(new SecretsEngineException("DB Error"));
+        SecretsEngineException expectedException = new SecretsEngineException("DB Error");
+        when(mockPostgresEngine.generateCredentials(TEST_ROLE)).thenThrow(expectedException);
 
-        // Act & Assert
-        assertThatThrownBy(() -> dbCredentialService.generateCredentialsForRole(TEST_ROLE))
-                .isInstanceOf(SecretsEngineException.class)
-                .hasMessage("DB Error"); // Check message propagation
+        // Act & Assert using assertThrows and assertSame
+        SecretsEngineException thrown = assertThrows(SecretsEngineException.class, () -> {
+            dbCredentialService.generateCredentialsForRole(TEST_ROLE);
+        });
+        assertSame(expectedException, thrown);
 
         verify(mockPostgresEngine, times(1)).generateCredentials(TEST_ROLE);
     }
+
 
     // --- revokeCredentialLease Tests ---
 
@@ -174,11 +187,14 @@ class DbCredentialServiceImplTest {
     @DisplayName("revokeCredentialLease: Should propagate LeaseNotFoundException from engine")
     void revokeCredentialLease_PropagatesLeaseNotFound() {
         // Arrange
-        doThrow(new LeaseNotFoundException(TEST_LEASE_ID)).when(mockPostgresEngine).revokeLease(TEST_LEASE_ID);
+        LeaseNotFoundException expectedException = new LeaseNotFoundException(TEST_LEASE_ID);
+        doThrow(expectedException).when(mockPostgresEngine).revokeLease(TEST_LEASE_ID);
 
-        // Act & Assert
-        assertThatThrownBy(() -> dbCredentialService.revokeCredentialLease(TEST_LEASE_ID))
-                .isInstanceOf(LeaseNotFoundException.class);
+        // Act & Assert using assertThrows and assertSame
+        LeaseNotFoundException thrown = assertThrows(LeaseNotFoundException.class, () -> {
+            dbCredentialService.revokeCredentialLease(TEST_LEASE_ID);
+        });
+        assertSame(expectedException, thrown);
 
         verify(mockPostgresEngine, times(1)).revokeLease(TEST_LEASE_ID);
     }
@@ -187,11 +203,16 @@ class DbCredentialServiceImplTest {
     @DisplayName("revokeCredentialLease: Should propagate VaultSealedException from engine")
     void revokeCredentialLease_PropagatesVaultSealed() {
         // Arrange
-        doThrow(new VaultSealedException("Sealed")).when(mockPostgresEngine).revokeLease(TEST_LEASE_ID);
+        VaultSealedException expectedException = new VaultSealedException("Sealed");
+        // Note: This test assumes the engine *could* throw VaultSealedException during revoke.
+        // Currently, it doesn't, but the test verifies propagation if it did.
+        doThrow(expectedException).when(mockPostgresEngine).revokeLease(TEST_LEASE_ID);
 
-        // Act & Assert
-        assertThatThrownBy(() -> dbCredentialService.revokeCredentialLease(TEST_LEASE_ID))
-                .isInstanceOf(VaultSealedException.class);
+        // Act & Assert using assertThrows and assertSame
+        VaultSealedException thrown = assertThrows(VaultSealedException.class, () -> {
+            dbCredentialService.revokeCredentialLease(TEST_LEASE_ID);
+        });
+        assertSame(expectedException, thrown);
 
         verify(mockPostgresEngine, times(1)).revokeLease(TEST_LEASE_ID);
     }
@@ -200,12 +221,14 @@ class DbCredentialServiceImplTest {
     @DisplayName("revokeCredentialLease: Should propagate SecretsEngineException from engine")
     void revokeCredentialLease_PropagatesSecretsEngineException() {
         // Arrange
-        doThrow(new SecretsEngineException("DB Revoke Error")).when(mockPostgresEngine).revokeLease(TEST_LEASE_ID);
+        SecretsEngineException expectedException = new SecretsEngineException("DB Revoke Error");
+        doThrow(expectedException).when(mockPostgresEngine).revokeLease(TEST_LEASE_ID);
 
-        // Act & Assert
-        assertThatThrownBy(() -> dbCredentialService.revokeCredentialLease(TEST_LEASE_ID))
-                .isInstanceOf(SecretsEngineException.class)
-                .hasMessage("DB Revoke Error");
+        // Act & Assert using assertThrows and assertSame
+        SecretsEngineException thrown = assertThrows(SecretsEngineException.class, () -> {
+            dbCredentialService.revokeCredentialLease(TEST_LEASE_ID);
+        });
+        assertSame(expectedException, thrown);
 
         verify(mockPostgresEngine, times(1)).revokeLease(TEST_LEASE_ID);
     }

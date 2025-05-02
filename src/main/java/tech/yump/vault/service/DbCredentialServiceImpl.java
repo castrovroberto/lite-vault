@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import tech.yump.vault.api.dto.DbCredentialsResponse;
+import tech.yump.vault.core.VaultSealedException;
 import tech.yump.vault.secrets.Lease;
 import tech.yump.vault.secrets.LeaseNotFoundException;
 import tech.yump.vault.secrets.RoleNotFoundException;
@@ -19,12 +20,11 @@ import java.util.UUID;
 public class DbCredentialServiceImpl implements DbCredentialService {
 
     // Inject the specific engine implementation for now.
-    // Could be refactored later to support multiple dynamic engines if needed.
     private final PostgresSecretsEngine postgresSecretsEngine;
 
     @Override
-    public DbCredentialsResponse generateCredentialsForRole(String roleName) throws RoleNotFoundException, SecretsEngineException {
-        log.debug("Service layer: Generating credentials for role '{}'", roleName);
+    public DbCredentialsResponse generateCredentialsForRole(String roleName) throws RoleNotFoundException, SecretsEngineException, VaultSealedException {
+        log.info("Service layer: Generating credentials for role '{}'", roleName); // Changed to info
         // Delegate directly to the engine
         Lease lease = postgresSecretsEngine.generateCredentials(roleName);
 
@@ -48,15 +48,18 @@ public class DbCredentialServiceImpl implements DbCredentialService {
         );
         // --- End Mapping Logic ---
 
-        log.debug("Service layer: Successfully generated and mapped credentials for role '{}', lease ID: {}", roleName, lease.id());
+        log.info("Service layer: Successfully generated and mapped credentials for role '{}', lease ID: {}", roleName, lease.id()); // Changed to info
         return response;
     }
 
     @Override
-    public void revokeCredentialLease(UUID leaseId) throws LeaseNotFoundException, SecretsEngineException {
-        log.debug("Service layer: Revoking lease ID '{}'", leaseId);
+    public void revokeCredentialLease(UUID leaseId) throws LeaseNotFoundException, SecretsEngineException, VaultSealedException {
+        log.info("Service layer: Revoking lease ID '{}'", leaseId); // Changed to info
         // Delegate directly to the engine
+        // Note: PostgresSecretsEngine.revokeLease currently doesn't check seal status,
+        // so VaultSealedException is unlikely here unless added to the engine method.
+        // We keep the throws clause for interface consistency and future-proofing.
         postgresSecretsEngine.revokeLease(leaseId);
-        log.debug("Service layer: Successfully revoked lease ID '{}'", leaseId);
+        log.info("Service layer: Successfully revoked lease ID '{}'", leaseId); // Changed to info
     }
 }
