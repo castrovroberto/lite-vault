@@ -178,8 +178,7 @@ class FileSystemStorageBackendTest {
     StorageException exception = assertThrows(StorageException.class, () -> {
       storageBackend.put(invalidKey, testData);
     }, "Putting with a traversal key should throw StorageException");
-    // Check message based on the actual implementation (might check for "Invalid storage key format" or "path traversal")
-    assertTrue(exception.getMessage().contains("Invalid storage key format") || exception.getMessage().contains("path traversal attempt"),
+    assertTrue(exception.getMessage().contains("Invalid storage path format") || exception.getMessage().contains("path traversal attempt"),
             "Exception message should indicate invalid path or traversal attempt");
   }
 
@@ -190,7 +189,7 @@ class FileSystemStorageBackendTest {
     StorageException exception = assertThrows(StorageException.class, () -> {
       storageBackend.get(invalidKey);
     }, "Getting with a traversal key should throw StorageException");
-    assertTrue(exception.getMessage().contains("Invalid storage key format") || exception.getMessage().contains("path traversal attempt"),
+    assertTrue(exception.getMessage().contains("Invalid storage path format") || exception.getMessage().contains("path traversal attempt"),
             "Exception message should indicate invalid path or traversal attempt");
   }
 
@@ -201,7 +200,7 @@ class FileSystemStorageBackendTest {
     StorageException exception = assertThrows(StorageException.class, () -> {
       storageBackend.delete(invalidKey);
     }, "Deleting with a traversal key should throw StorageException");
-    assertTrue(exception.getMessage().contains("Invalid storage key format") || exception.getMessage().contains("path traversal attempt"),
+    assertTrue(exception.getMessage().contains("Invalid storage path format") || exception.getMessage().contains("path traversal attempt"),
             "Exception message should indicate invalid path or traversal attempt");
   }
 

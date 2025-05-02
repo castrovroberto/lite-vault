@@ -1,5 +1,6 @@
 package tech.yump.vault.storage;
 
+import java.util.List; // <-- Added import
 import java.util.Optional;
 
 /**
@@ -38,4 +39,26 @@ public interface StorageBackend {
   void delete(String key) throws StorageException;
 
   // Optional: Add methods like list(String prefix) later if needed.
+
+  /**
+   * Checks if the given relative path corresponds to a directory within the storage backend.
+   *
+   * @param relativePath The path relative to the storage root (e.g., "jwt/keys/my-key/versions").
+   * Must not be null or empty, and should not contain ".." or leading/trailing slashes.
+   * @return true if the path exists and is a directory, false otherwise.
+   * @throws StorageException If an error occurs accessing the storage or if the path is invalid.
+   */
+  boolean isDirectory(String relativePath) throws StorageException; // <-- Added this method
+
+  /**
+   * Lists the entries (files and directories) within the specified relative directory path.
+   *
+   * @param relativeDirPath The path relative to the storage root (e.g., "jwt/keys/my-key/versions").
+   * Must not be null or empty, and should not contain ".." or leading/trailing slashes.
+   * @return A list of entry names (filenames or subdirectory names) within the specified directory.
+   * Returns an empty list if the directory is empty or does not exist.
+   * @throws StorageException If an error occurs accessing the storage or if the path is invalid or not a directory.
+   */
+  List<String> listDirectory(String relativeDirPath) throws StorageException; // <-- Added this method
+
 }

@@ -11,11 +11,15 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.AccessDeniedException;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 @Slf4j
@@ -24,15 +28,14 @@ public class FileSystemStorageBackend implements StorageBackend {
 
   private final Path basePath;
   private final ObjectMapper objectMapper;
-  private final MssmProperties properties;
-
+  // private final MssmProperties properties; // Keep for basePath initialization
 
   public FileSystemStorageBackend(
-      final ObjectMapper objectMapper,
-      final MssmProperties properties
+          final ObjectMapper objectMapper,
+          final MssmProperties properties // Keep for basePath initialization
   ) {
     this.objectMapper = objectMapper;
-    this.properties = properties;
+    // this.properties = properties;
     this.basePath = Paths.get(properties.storage().filesystem().path())
             .toAbsolutePath()
             .normalize();
@@ -67,11 +70,10 @@ public class FileSystemStorageBackend implements StorageBackend {
 
   @Override
   public void put(String key, EncryptedData data) throws StorageException {
-    // FIX: Use StringUtils.hasText for key validation
     if (!StringUtils.hasText(key) || data == null) {
       throw new IllegalArgumentException("Key cannot be null or empty, and data cannot be null for put operation.");
     }
-    Path filePath = resolveFilePath(key);
+    Path filePath = resolveFilePath(key); // Uses updated resolveFilePath -> resolvePath
     log.debug("Putting data for key '{}' at path: {}", key, filePath);
 
     try {
@@ -91,11 +93,10 @@ public class FileSystemStorageBackend implements StorageBackend {
 
   @Override
   public Optional<EncryptedData> get(String key) throws StorageException {
-    // FIX: Use StringUtils.hasText for key validation
     if (!StringUtils.hasText(key)) {
       throw new IllegalArgumentException("Key cannot be null or empty for get operation.");
     }
-    Path filePath = resolveFilePath(key);
+    Path filePath = resolveFilePath(key); // Uses updated resolveFilePath -> resolvePath
     log.debug("Getting data for key '{}' from path: {}", key, filePath);
 
     if (!Files.exists(filePath) || !Files.isRegularFile(filePath)) {
@@ -119,11 +120,10 @@ public class FileSystemStorageBackend implements StorageBackend {
 
   @Override
   public void delete(String key) throws StorageException {
-    // FIX: Use StringUtils.hasText for key validation
     if (!StringUtils.hasText(key)) {
       throw new IllegalArgumentException("Key cannot be null or empty for delete operation.");
     }
-    Path filePath = resolveFilePath(key);
+    Path filePath = resolveFilePath(key); // Uses updated resolveFilePath -> resolvePath
     log.debug("Deleting data for key '{}' at path: {}", key, filePath);
 
     try {
@@ -145,35 +145,93 @@ public class FileSystemStorageBackend implements StorageBackend {
     }
   }
 
+  // --- Added Methods ---
+
+  @Override
+  public boolean isDirectory(String relativePath) throws StorageException {
+    if (!StringUtils.hasText(relativePath)) {
+      throw new IllegalArgumentException("Relative path cannot be null or empty for isDirectory check.");
+    }
+    Path absolutePath = resolvePath(relativePath); // Use a generalized resolve method
+    log.debug("Checking if path is directory: {}", absolutePath);
+    // Check existence and isDirectory without following symlinks for safety
+    return Files.isDirectory(absolutePath, LinkOption.NOFOLLOW_LINKS);
+  }
+
+  @Override
+  public List<String> listDirectory(String relativeDirPath) throws StorageException {
+    if (!StringUtils.hasText(relativeDirPath)) {
+      throw new IllegalArgumentException("Relative directory path cannot be null or empty for list operation.");
+    }
+    Path absoluteDirPath = resolvePath(relativeDirPath); // Use a generalized resolve method
+    log.debug("Listing directory contents for path: {}", absoluteDirPath);
+
+    if (!Files.isDirectory(absoluteDirPath, LinkOption.NOFOLLOW_LINKS)) {
+      log.warn("Attempted to list non-directory or non-existent path: {}", absoluteDirPath);
+      // Return empty list consistent with how Files.newDirectoryStream behaves for non-existent paths
+      // after initial check, though we might throw if we expect it to exist.
+      // Let's return empty for simplicity, callers might need to check isDirectory first if existence is mandatory.
+      return List.of();
+    }
+
+    List<String> entries = new ArrayList<>();
+    try (DirectoryStream<Path> stream = Files.newDirectoryStream(absoluteDirPath)) {
+      for (Path entry : stream) {
+        entries.add(entry.getFileName().toString());
+      }
+      log.debug("Found {} entries in directory {}", entries.size(), absoluteDirPath);
+      return entries;
+    } catch (IOException e) {
+      log.error("Failed to list directory contents for path {}: {}", absoluteDirPath, e.getMessage(), e);
+      throw new StorageException("Failed to list directory: " + relativeDirPath, e);
+    }
+  }
+
+  /**
+   * Resolves a relative path against the base storage path and performs security checks.
+   * This method is suitable for resolving both files and directories.
+   *
+   * @param relativePath The logical relative path (e.g., "secrets/myapp/db-password" or "jwt/keys/my-key").
+   * @return The absolute Path object.
+   * @throws StorageException if the path is invalid or results in a path outside the base directory.
+   */
+  private Path resolvePath(String relativePath) throws StorageException {
+    // Basic sanitization: replace backslashes, remove leading/trailing slashes, disallow ".."
+    String sanitizedPath = relativePath.replace('\\', '/').trim();
+    if (sanitizedPath.startsWith("/") || sanitizedPath.endsWith("/") || sanitizedPath.contains("..") || sanitizedPath.isEmpty()) {
+      log.error("Invalid storage path provided: '{}'", relativePath);
+      throw new StorageException("Invalid storage path format: " + relativePath);
+    }
+
+    // Resolve against the base path
+    Path absolutePath = this.basePath.resolve(sanitizedPath).normalize();
+
+    // Security check: Ensure the resolved path is still within the base path
+    if (!absolutePath.startsWith(this.basePath)) {
+      log.error("Path traversal attempt detected for path '{}', resolved path '{}' is outside base path '{}'", relativePath, absolutePath, this.basePath);
+      throw new StorageException("Invalid path resulting in path traversal attempt: " + relativePath);
+    }
+
+    return absolutePath;
+  }
+
+
   /**
    * Resolves the logical key to an absolute file path within the base directory.
+   * Appends ".json" extension.
    * Performs basic sanitization to prevent path traversal.
    *
    * @param key The logical key.
    * @return The absolute Path object for the file.
    * @throws StorageException if the key is invalid or results in a path outside the base directory.
    */
-  private Path resolveFilePath(String key) {
-    // Basic sanitization: replace backslashes, remove leading/trailing slashes, disallow ".."
-    // FIX: Added check for empty key here too, although StringUtils.hasText should catch it earlier
-    String sanitizedKey = key.replace('\\', '/').trim();
-    if (sanitizedKey.startsWith("/") || sanitizedKey.endsWith("/") || sanitizedKey.contains("..") || sanitizedKey.isEmpty()) {
-      log.error("Invalid storage key provided: '{}'", key);
-      throw new StorageException("Invalid storage key format: " + key);
+  private Path resolveFilePath(String key) throws StorageException {
+    // This method now specifically handles *keys* which map to *files* with .json extension
+    if (!StringUtils.hasText(key)) {
+      throw new IllegalArgumentException("Key cannot be null or empty.");
     }
-
-    // Append ".json" extension
-    Path relativePath = Paths.get(sanitizedKey + ".json");
-
-    // Resolve against the base path
-    Path absolutePath = this.basePath.resolve(relativePath).normalize();
-
-    // Security check: Ensure the resolved path is still within the base path
-    if (!absolutePath.startsWith(this.basePath)) {
-      log.error("Path traversal attempt detected for key '{}', resolved path '{}' is outside base path '{}'", key, absolutePath, this.basePath);
-      throw new StorageException("Invalid key resulting in path traversal attempt: " + key);
-    }
-
-    return absolutePath;
+    String relativeFilePath = key + ".json"; // Append .json here
+    return resolvePath(relativeFilePath); // Delegate sanitization and resolution
   }
+  // --- End Added/Modified Methods ---
 }
