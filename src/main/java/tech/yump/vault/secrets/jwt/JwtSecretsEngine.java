@@ -13,6 +13,7 @@ import com.nimbusds.jose.jwk.KeyUse;
 import com.nimbusds.jose.jwk.RSAKey;
 import io.jsonwebtoken.JwtBuilder;
 import io.jsonwebtoken.Jwts;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -29,10 +30,6 @@ import tech.yump.vault.storage.StorageException;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-// Removed: import java.nio.file.DirectoryStream;
-// Removed: import java.nio.file.Files;
-// Removed: import java.nio.file.Path;
-// Removed: import java.nio.file.Paths;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.KeyFactory;
 import java.security.KeyPair;
@@ -109,6 +106,126 @@ public class JwtSecretsEngine implements SecretsEngine {
     private static final String KEY_MATERIAL_PATH_FORMAT = "jwt/keys/%s/versions/%d";
     private static final String KEY_CONFIG_PATH_FORMAT = "jwt/keys/%s/config";
     static final TypeReference<StoredJwtKeyMaterial> KEY_MATERIAL_TYPE_REF = new TypeReference<>() {}; // For deserialization
+
+
+    // --- START: New @PostConstruct Method (Task: jwt-initialization-task.md) ---
+    @PostConstruct
+    public void initializeKeys() {
+        log.info("Checking JWT key initialization status on application startup...");
+
+        // Step 2: Check Vault Seal Status
+        if (sealManager.isSealed()) {
+            log.warn("Cannot initialize JWT keys: Vault is sealed. Initialization will be skipped.");
+            return; // Stop processing if sealed
+        }
+        log.debug("Vault is unsealed, proceeding with JWT key initialization check.");
+
+        // Step 3: Load Key Definitions from Properties
+        Map<String, MssmProperties.JwtKeyDefinition> configuredKeys;
+        try {
+            // Defensive check for nested properties
+            if (properties.secrets() == null || properties.secrets().jwt() == null || properties.secrets().jwt().keys() == null) {
+                log.info("JWT key configuration section (mssm.secrets.jwt.keys) is missing or empty in properties. Skipping initialization.");
+                return;
+            }
+            configuredKeys = properties.secrets().jwt().keys();
+        } catch (Exception e) {
+            // Catch potential NullPointerException or other issues during property access
+            log.error("Error accessing JWT key configuration from properties. Skipping initialization.", e);
+            return;
+        }
+
+        if (configuredKeys.isEmpty()) {
+            log.info("No JWT keys configured under mssm.secrets.jwt.keys. Skipping initialization.");
+            return;
+        }
+
+        log.info("Found {} JWT key(s) configured. Checking initialization status for each...", configuredKeys.size());
+
+        // Step 4: Iterate Through Configured Keys
+        for (Map.Entry<String, MssmProperties.JwtKeyDefinition> entry : configuredKeys.entrySet()) {
+            String keyName = entry.getKey();
+            MssmProperties.JwtKeyDefinition keyProps = entry.getValue(); // Use keyProps as in plan
+
+            log.debug("Processing key: '{}'", keyName);
+
+            try {
+                // Step 5 & 6 logic refactored into helper method
+                checkAndInitializeKey(keyName, keyProps);
+
+            } catch (VaultSealedException vse) {
+                // If vault becomes sealed *during* processing (unlikely but possible)
+                log.error("Vault became sealed during initialization check/attempt for key '{}'. Halting further JWT key initialization.", keyName, vse);
+                break; // Stop processing further keys as subsequent attempts will also fail
+
+            } catch (JwtKeyNotFoundException knfe) {
+                // This might occur if generateAndStoreKeyPair fails internally due to definition issues
+                // or if checkAndInitializeKey calls getKeyDefinition and it fails unexpectedly.
+                log.error("Configuration definition issue encountered for key '{}' during initialization attempt: {}. Skipping this key.", keyName, knfe.getMessage());
+                // Continue to the next key (implicitly done by loop)
+
+            } catch (StorageException | EncryptionService.EncryptionException | SecretsEngineException | IOException e) {
+                // Catch specific known exceptions from storage, encryption, or engine logic
+                log.error("Failed to initialize JWT key '{}' due to an error: {}. Skipping this key.", keyName, e.getMessage(), e);
+                // Continue to the next key (implicitly done by loop)
+
+            } catch (Exception e) {
+                // Catch any other unexpected exceptions
+                log.error("Failed to initialize JWT key '{}' due to an unexpected error: {}. Skipping this key.", keyName, e.getMessage(), e);
+                // Continue to the next key (implicitly done by loop)
+            }
+        } // End of loop
+
+        log.info("JWT key initialization check complete.");
+    }
+
+    // --- Helper method for Steps 5 & 6 (Task: jwt-initialization-task.md) ---
+    private void checkAndInitializeKey(String keyName, MssmProperties.JwtKeyDefinition keyProps)
+            throws StorageException, VaultSealedException, SecretsEngineException, IOException { // Declare exceptions it might throw
+
+        // Step 5: Check for Existing Initialization
+        String configPath = getKeyConfigPath(keyName); // Uses existing helper
+        // IMPORTANT: Use the logical key path format, FileSystemStorageBackend handles adding .json
+        String initialKeyMaterialPath = String.format(KEY_MATERIAL_PATH_FORMAT, keyName, 1);
+
+        log.debug("Checking existence for key '{}': config path='{}', v1 material path='{}'", keyName, configPath, initialKeyMaterialPath);
+
+        // Check if both config and version 1 material exist using StorageBackend
+        // Note: storageBackend.get() might throw StorageException, caught by the caller loop
+        Optional<EncryptedData> existingConfigData = storageBackend.get(configPath);
+        Optional<EncryptedData> existingKeyV1Data = storageBackend.get(initialKeyMaterialPath);
+
+        if (existingConfigData.isPresent() && existingKeyV1Data.isPresent()) {
+            log.debug("JWT key '{}' appears to be already initialized (config and version 1 found). Skipping generation.", keyName);
+            // Nothing more to do for this key, return from helper method
+            return;
+        }
+
+        // Step 6: Perform Initialization (If Necessary)
+        // If we reach here, either config or v1 material (or both) are missing.
+        log.info("Initializing JWT key '{}' (config or version 1 data missing)...", keyName);
+
+        // 6.1. Generate and store version 1 key material
+        // This call can throw VaultSealedException, SecretsEngineException (wrapping others like StorageException, EncryptionException, JsonProcessingException)
+        generateAndStoreKeyPair(keyName, 1); // Reuses existing logic
+
+        // 6.2. Create and store the initial configuration pointing to version 1
+        Duration rotationPeriod = keyProps.rotationPeriod() != null ?
+                keyProps.rotationPeriod() : Duration.ZERO; // Default to zero duration if null
+
+        JwtKeyConfig initialConfig = new JwtKeyConfig(
+                1, // Current version is 1
+                rotationPeriod,
+                Instant.now() // Set last rotation time to now for the initial setup
+        );
+
+        // This call can throw VaultSealedException, SecretsEngineException (wrapping others like StorageException, EncryptionException, JsonProcessingException)
+        writeKeyConfig(keyName, initialConfig); // Reuses existing logic
+
+        log.info("Successfully initialized JWT key '{}' with version 1.", keyName);
+    }
+    // --- END: New @PostConstruct Method and Helper ---
+
 
     // --- generateAndStoreKeyPair ---
     public void generateAndStoreKeyPair(String keyName, int version) throws SecretsEngineException, VaultSealedException {

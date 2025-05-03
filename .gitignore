@@ -68,6 +68,11 @@ out/
 # Optional: Sensitive config files if not handled by Vault/env vars yet
 application*.yml
 secrets.*
+.env
 
 # Custom project files
 /project/
+
+# Postgres files
+.pgpass
+pgadmin-servers.json

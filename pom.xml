@@ -163,18 +163,7 @@
     <resources>
       <resource>
         <directory>src/main/resources</directory>
-        <filtering>true</filtering>
-        <excludes>
-          <exclude>**/*.p12</exclude>
-          <exclude>**/*.jks</exclude>
-          <exclude>**/*.key</exclude>
-          <exclude>**/*.cer</exclude>
-          <exclude>**/*.crt</exclude>
-          <exclude>**/*.pem</exclude>
-          <exclude>**/*.png</exclude>
-          <exclude>**/*.jpg</exclude>
-          <exclude>**/*.gif</exclude>
-        </excludes>
+        <filtering>false</filtering>
       </resource>
     </resources>
     <plugins>

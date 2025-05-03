@@ -29,7 +29,7 @@
     - Completes the lease lifecycle management for dynamic secrets (F-DB-230).
     - Enhances security by ensuring temporary credentials are removed.
 
-#### 43. [ ] Generate OpenAPI Documentation
+#### 43. [x] Generate OpenAPI Documentation
 - **Description:**
     - Integrate a library like `springdoc-openapi` to automatically generate an OpenAPI v3 specification from existing Spring Web annotations (`@RestController`, `@GetMapping`, etc.).
     - Configure basic API info (title, version, description) via properties.
