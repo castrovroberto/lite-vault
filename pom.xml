@@ -139,10 +139,33 @@
       <scope>test</scope>
       <!-- Version managed by Spring Boot Parent -->
     </dependency>
+    <dependency>
+      <groupId>org.codehaus.janino</groupId>
+      <artifactId>janino</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.awaitility</groupId>
+      <artifactId>awaitility</artifactId>
+      <version>4.2.1</version> <!-- Use the latest version -->
+      <scope>test</scope>
+    </dependency>
+
+    <!-- == API Documentation (SpringDoc OpenAPI) == -->
+    <dependency>
+      <groupId>org.springdoc</groupId>
+      <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+      <version>2.5.0</version> <!-- Compatible with Spring Boot 3.x -->
+    </dependency>
 
   </dependencies>
 
   <build>
+    <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>false</filtering>
+      </resource>
+    </resources>
     <plugins>
       <plugin>
         <groupId>org.springframework.boot</groupId>
@@ -157,13 +180,10 @@
         </configuration>
       </plugin>
       <plugin>
-        <!-- Ensure compilation uses the specified Java version -->
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
-        <!-- Version typically inherited from parent -->
         <configuration>
-          <!-- Source/Target already inherited from parent via java.version property -->
-          <parameters>true</parameters> <!-- Recommended for parameter name retention -->
+          <parameters>true</parameters>
         </configuration>
       </plugin>
     </plugins>

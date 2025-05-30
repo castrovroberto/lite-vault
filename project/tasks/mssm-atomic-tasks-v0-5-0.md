@@ -8,7 +8,7 @@
 
 ### Phase 5 Atomic Tasks (41-50)
 
-#### 41. [ ] Enhance Audit Logging Backend
+#### 41. [x] Enhance Audit Logging Backend
 - **Description:**
     - Implement an alternative `AuditBackend` (e.g., `FileAuditBackend`) that writes structured audit events (JSON) to a dedicated, append-only log file configured via `MssmProperties`.
     - Ensure proper log rotation configuration for the audit file (can leverage Logback/Log4j2 configuration if using SLF4j bridge).
@@ -17,7 +17,7 @@
     - Moves closer to F-CORE-130's "immutable" goal by separating audit logs.
     - Provides a more parseable audit trail than general application logs.
 
-#### 42. [ ] Implement DB Lease Revocation
+#### 42. [x] Implement DB Lease Revocation
 - **Description:**
     - Add logic to `PostgresSecretsEngine` (or `LeaseManager`) to revoke credentials. This involves:
         - Retrieving the configured SQL *revocation* template for the role associated with a lease.
@@ -29,7 +29,7 @@
     - Completes the lease lifecycle management for dynamic secrets (F-DB-230).
     - Enhances security by ensuring temporary credentials are removed.
 
-#### 43. [ ] Generate OpenAPI Documentation
+#### 43. [x] Generate OpenAPI Documentation
 - **Description:**
     - Integrate a library like `springdoc-openapi` to automatically generate an OpenAPI v3 specification from existing Spring Web annotations (`@RestController`, `@GetMapping`, etc.).
     - Configure basic API info (title, version, description) via properties.

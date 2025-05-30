@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.4.0] - YYYY-MM-DD <!-- Replace YYYY-MM-DD with the actual release date -->
+## [0.4.0] - 2025-05-01
 
 ### Added
 - **JWT Secrets Engine (Phase 4 - Tasks 31-40):**

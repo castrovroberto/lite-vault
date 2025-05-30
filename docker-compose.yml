@@ -1,0 +1,94 @@
+services:
+  # Lite Vault Application Service (from original file)
+  lite-vault:
+    build: . # Build the image from the Dockerfile in the current directory
+    container_name: lite-vault-dev
+    ports:
+      - "8443:8443" # Map host port 8443 to container port 8443 (HTTPS)
+    environment:
+      # Pass secrets from the .env file
+      - MSSM_KEYSTORE_PASSWORD=${MSSM_KEYSTORE_PASSWORD}
+      - MSSM_MASTER_KEY_B64=${MSSM_MASTER_KEY_B64}
+      - MSSM_DB_POSTGRES_PASSWORD=${MSSM_DB_POSTGRES_PASSWORD}
+
+      # Override database connection URL to point to the postgres service name
+      # instead of localhost (as configured in application-dev.yml)
+      - MSSM_SECRETS_DB_POSTGRES_CONNECTION_URL=jdbc:postgresql://postgres-db:${MSSM_DB_POSTGRES_PORT}/${MSSM_DEFAULT_DB_NAME}
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-db:${MSSM_DB_POSTGRES_PORT}/${MSSM_DEFAULT_DB_NAME}
+
+      # Explicitly set profile (optional, as it's default in application.yml)
+      - SPRING_PROFILES_ACTIVE=dev
+
+      # Pass JVM options defined in Dockerfile (optional, can be overridden)
+      # - JAVA_OPTS=-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0
+
+    volumes:
+      # Mount a named volume for persistent vault data
+      - lite-vault-data:/app/lite-vault-data
+    depends_on:
+      postgres-db:
+        # Wait for postgres to be healthy before starting lite-vault
+        condition: service_healthy
+    networks:
+      - vault-net
+
+  # PostgreSQL Database Service (Merged: Uses postgres:16, keeps name/healthcheck/network/password from original)
+  postgres-db: # Renamed from 'postgres' to match lite-vault dependency
+    image: postgres:16 # Using image from the new file
+    container_name: postgres-db-dev # Keeping consistent container name
+    restart: unless-stopped # Added from the new file
+    environment:
+      # Configure the database, user, and password
+      # These MUST match the values expected by lite-vault (and in the .env file)
+      - POSTGRES_DB=${MSSM_DEFAULT_DB_NAME}
+      - POSTGRES_USER=${MSSM_DB_POSTGRES_USER}
+      # CRITICAL: Using password from .env file, consistent with lite-vault
+      - POSTGRES_PASSWORD=${MSSM_DB_POSTGRES_PASSWORD}
+    volumes:
+      # Mount a named volume for persistent database data (using name from original file)
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      # Optional: Expose port 5432 if you need direct access from your host machine
+      - "5432:5432"
+    healthcheck: # Keeping healthcheck from original file for depends_on condition
+      # Check if the database is ready to accept connections
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: # Added to ensure it's on the same network as lite-vault
+      - vault-net
+
+  # PgAdmin Service (from new file)
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: dev_pgadmin # Keeping name from new file
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@localhost.com
+      PGADMIN_DEFAULT_PASSWORD: ${MSSM_DB_PGADMIN_PASSWORD} # Consider moving to .env if sensitive
+    ports:
+      - "5050:80" # Map host 5050 to container 80
+    depends_on:
+      # Depends on the correctly named postgres service
+      - postgres-db
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      # Assumes pgadmin-servers.json exists in the project root
+      - ./pgadmin-servers.json:/pgadmin4/servers.json
+      # Assumes .pgpass exists in the project root (for passwordless connection if configured)
+      - ./.pgpass:/pgpass
+    networks: # Added to ensure it can reach postgres-db by name
+      - vault-net
+
+# Define named volumes for data persistence (Combined list)
+volumes:
+  lite-vault-data:
+  postgres-data:
+  pgadmin_data: # Added from new file
+
+# Define a network for services to communicate (from original file)
+networks:
+  vault-net:
+    driver: bridge
+

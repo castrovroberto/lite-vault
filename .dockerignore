@@ -1,0 +1,33 @@
+# Git files
+.git/
+.gitignore
+
+# Maven build output (target is copied selectively in Dockerfile)
+target/
+
+# IDE files
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+
+# Log files / Data directories (should use volumes)
+project/log/
+data/
+storage/
+audit/
+*.log
+
+# Local configuration / secrets (should use env vars or mounted config)
+*.properties
+*.yml
+# Except the ones needed by the build process if any (pom.xml is handled)
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker files themselves
+Dockerfile
+.dockerignore
