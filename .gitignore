@@ -71,7 +71,7 @@ secrets.*
 .env
 
 # Custom project files
-/project/
+# /project/
 
 # Postgres files
 .pgpass
