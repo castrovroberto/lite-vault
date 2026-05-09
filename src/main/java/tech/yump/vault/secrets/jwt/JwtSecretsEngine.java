@@ -16,6 +16,7 @@ import io.jsonwebtoken.Jwts;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import tech.yump.vault.audit.AuditHelper;
 import tech.yump.vault.config.MssmProperties;
@@ -926,6 +927,52 @@ public class JwtSecretsEngine implements SecretsEngine {
         } catch (Exception e) { // Catch potential Nimbus library exceptions too
             log.error("Failed to convert {} public key (kid: {}) to JWK: {}", keyType, keyId, e.getMessage(), e);
             throw new SecretsEngineException("Failed to convert public key to JWK format.", e);
+        }
+    }
+
+    @Scheduled(fixedDelayString = "${mssm.secrets.jwt.rotation-check-interval:PT1H}")
+    public void checkAndRotateExpiredKeys() {
+        if (sealManager.isSealed()) {
+            log.debug("Skipping JWT key rotation check: Vault is sealed.");
+            return;
+        }
+        if (properties.secrets() == null || properties.secrets().jwt() == null || properties.secrets().jwt().keys() == null) {
+            return;
+        }
+        Map<String, MssmProperties.JwtKeyDefinition> configuredKeys = properties.secrets().jwt().keys();
+        Instant now = Instant.now();
+        log.debug("Running JWT key rotation check. Configured keys: {}", configuredKeys.size());
+
+        for (Map.Entry<String, MssmProperties.JwtKeyDefinition> entry : configuredKeys.entrySet()) {
+            String keyName = entry.getKey();
+            MssmProperties.JwtKeyDefinition keyDef = entry.getValue();
+
+            if (keyDef.rotationPeriod() == null || keyDef.rotationPeriod().isZero()) {
+                log.debug("Key '{}' has no rotation period configured. Skipping.", keyName);
+                continue;
+            }
+            try {
+                Optional<JwtKeyConfig> configOpt = readKeyConfig(keyName);
+                if (configOpt.isEmpty()) {
+                    log.warn("No config found for key '{}' during rotation check. Skipping.", keyName);
+                    continue;
+                }
+                JwtKeyConfig keyConfig = configOpt.get();
+                Instant nextRotation = keyConfig.lastRotationTime().plus(keyConfig.rotationPeriod());
+
+                if (now.isAfter(nextRotation)) {
+                    log.info("Key '{}' is due for rotation (last rotation: {}, period: {}). Rotating...",
+                            keyName, keyConfig.lastRotationTime(), keyConfig.rotationPeriod());
+                    rotateKey(keyName);
+                } else {
+                    log.debug("Key '{}' rotation not due until {}.", keyName, nextRotation);
+                }
+            } catch (VaultSealedException e) {
+                log.warn("Vault sealed during rotation check for key '{}'. Stopping.", keyName);
+                break;
+            } catch (Exception e) {
+                log.error("Failed to check/rotate key '{}': {}. Continuing with remaining keys.", keyName, e.getMessage(), e);
+            }
         }
     }
 

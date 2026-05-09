@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 
 import javax.sql.DataSource;
+import java.time.Clock;
 import java.util.Arrays;
 
 @Configuration
@@ -17,6 +18,11 @@ import java.util.Arrays;
 public class DataSourceConfig {
 
     private final MssmProperties mssmProperties;
+
+    @Bean
+    public Clock systemClock() {
+        return Clock.systemUTC();
+    }
 
     @Bean
     @Primary // Ensure this is the primary DataSource bean used by default
@@ -52,9 +58,11 @@ public class DataSourceConfig {
 
             // Optional HikariCP settings (can be read from spring.datasource.hikari.* if needed)
             config.setPoolName("LiteVaultPostgresPool");
-            config.setMaximumPoolSize(10); // Example: Set pool size
+            config.setMaximumPoolSize(10);
             config.setMinimumIdle(2);
-            // Add other Hikari properties as needed
+            config.setConnectionTestQuery("SELECT 1");
+            config.setKeepaliveTime(60_000);
+            config.setLeakDetectionThreshold(0); // Override per-profile (dev: 30000ms)
 
             log.info("Creating HikariDataSource for URL: {}, User: {}", config.getJdbcUrl(), config.getUsername());
             dataSource = new HikariDataSource(config);

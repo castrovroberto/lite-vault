@@ -65,6 +65,15 @@ public class KVController {
             @org.springframework.web.bind.annotation.RequestBody Map<String, String> secrets // Keep Spring's annotation
             // No need to declare @RequestHeader("X-Vault-Token") here, it's handled globally
     ) {
+        if (secrets == null || secrets.isEmpty()) {
+            throw new IllegalArgumentException("Request body must contain at least one key-value pair.");
+        }
+        if (secrets.size() > 100) {
+            throw new IllegalArgumentException("Request body exceeds maximum allowed number of key-value pairs (100).");
+        }
+        if (secrets.containsKey(null) || secrets.containsValue(null)) {
+            throw new IllegalArgumentException("Secret keys and values must not be null.");
+        }
         String sanitizedPath = sanitizePath(path);
         log.info("Received request to write secrets at raw path: {}, sanitized path: {}", path, sanitizedPath);
         kvSecretEngine.write(sanitizedPath, secrets);

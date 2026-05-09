@@ -19,6 +19,7 @@ import tech.yump.vault.core.VaultSealedException;
 import tech.yump.vault.secrets.LeaseNotFoundException;
 import tech.yump.vault.secrets.RoleNotFoundException;
 import tech.yump.vault.secrets.SecretsEngineException;
+import tech.yump.vault.secrets.jwt.JwtSecretsEngine;
 import tech.yump.vault.secrets.kv.KVEngineException;
 
 import java.util.HashMap;
@@ -108,6 +109,23 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 "failure",
                 status.value(),
                 message, // Log the user-facing message
+                extractContextData(request)
+        );
+        return ResponseEntity.status(status).body(problemDetail);
+    }
+
+    @ExceptionHandler(JwtSecretsEngine.JwtKeyNotFoundException.class)
+    public ResponseEntity<ProblemDetail> handleJwtKeyNotFoundException(JwtSecretsEngine.JwtKeyNotFoundException ex, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.NOT_FOUND;
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(status, ex.getMessage());
+        problemDetail.setTitle("JWT Key Not Found");
+        log.warn("JWT key not found: {}. Request: {} {}", ex.getMessage(), request.getMethod(), request.getRequestURI());
+        auditHelper.logHttpEvent(
+                "jwt_operation",
+                determineActionFromRequest(request),
+                "failure",
+                status.value(),
+                ex.getMessage(),
                 extractContextData(request)
         );
         return ResponseEntity.status(status).body(problemDetail);

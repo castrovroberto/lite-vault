@@ -16,7 +16,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,15 +23,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import tech.yump.vault.api.ApiError;
 import tech.yump.vault.audit.AuditHelper;
-import tech.yump.vault.core.VaultSealedException;
-import tech.yump.vault.secrets.SecretsEngineException;
 import tech.yump.vault.secrets.jwt.JwtSecretsEngine;
 
-import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @RestController
 @RequestMapping("/v1/jwt")
@@ -43,7 +36,6 @@ public class JwtController {
 
     private final JwtSecretsEngine jwtSecretsEngine;
     private final AuditHelper auditHelper;
-    private static final Pattern KEY_NAME_PATTERN = Pattern.compile("key '([^']*)'");
 
     // Define DTO for response schema documentation
     @Schema(description = "Response containing the signed JSON Web Token.")
@@ -84,6 +76,12 @@ public class JwtController {
             @org.springframework.web.bind.annotation.RequestBody Map<String, Object> claims // Keep Spring's annotation
             // No token parameter needed
     ) {
+        if (claims == null) {
+            throw new IllegalArgumentException("Claims body must not be null.");
+        }
+        if (claims.size() > 50) {
+            throw new IllegalArgumentException("Claims map exceeds maximum allowed size (50 entries).");
+        }
         log.info("Controller: Received request to sign JWT using key: {}", keyName);
         String operation = "sign_jwt";
         try {
@@ -167,51 +165,4 @@ public class JwtController {
         }
     }
 
-    // --- Exception Handlers ---
-    // (Annotations on handlers help springdoc understand error responses)
-
-    @ExceptionHandler(JwtSecretsEngine.JwtKeyNotFoundException.class)
-    public ResponseEntity<ApiError> handleKeyNotFoundException(JwtSecretsEngine.JwtKeyNotFoundException ex) {
-        // ... (existing handler code) ...
-        log.warn("JWT Key Not Found: {}", ex.getMessage());
-        String keyName = extractKeyName(ex.getMessage()).orElse("unknown");
-        String operation = "jwt_operation_failed";
-        Map<String, Object> auditData = new HashMap<>();
-        auditData.put("error_type", "key_not_found");
-        auditData.put("key_name", keyName);
-        auditHelper.logHttpEvent("jwt_operation", operation, "failure", HttpStatus.NOT_FOUND.value(), ex.getMessage(), auditData);
-        return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(new ApiError("JWT key configuration or version not found: " + ex.getMessage()));
-    }
-
-    @ExceptionHandler(VaultSealedException.class)
-    public ResponseEntity<ApiError> handleVaultSealedException(VaultSealedException ex) {
-        // ... (existing handler code) ...
-        log.warn("Operation failed: {}", ex.getMessage());
-        String operation = "jwt_operation_failed";
-        auditHelper.logHttpEvent("jwt_operation", operation, "failure", HttpStatus.SERVICE_UNAVAILABLE.value(), ex.getMessage(), Map.of("error_type", "vault_sealed"));
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .body(new ApiError("Vault is sealed."));
-    }
-
-    @ExceptionHandler(SecretsEngineException.class)
-    public ResponseEntity<ApiError> handleSecretsEngineException(SecretsEngineException ex) {
-        // ... (existing handler code) ...
-        log.error("JWT Secrets Engine Error: {}", ex.getMessage(), ex);
-        String operation = "jwt_operation_failed";
-        String keyName = extractKeyName(ex.getMessage()).orElse("unknown");
-        Map<String, Object> auditData = new HashMap<>();
-        auditData.put("error_type", "engine_error");
-        auditData.put("key_name", keyName);
-        auditHelper.logHttpEvent("jwt_operation", operation, "failure", HttpStatus.INTERNAL_SERVER_ERROR.value(), ex.getMessage(), auditData);
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(new ApiError("Internal server error during JWT operation."));
-    }
-
-    // Helper method
-    private static Optional<String> extractKeyName(String message) {
-        if (message == null) return Optional.empty();
-        Matcher matcher = KEY_NAME_PATTERN.matcher(message);
-        return matcher.find() ? Optional.of(matcher.group(1)) : Optional.empty();
-    }
 }

@@ -4,8 +4,15 @@ import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
+import org.springframework.dao.RecoverableDataAccessException;
+import org.springframework.dao.TransientDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Recover;
+import org.springframework.retry.annotation.Retryable;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import tech.yump.vault.audit.AuditHelper;
 import tech.yump.vault.config.MssmProperties;
 import tech.yump.vault.core.SealManager;
@@ -20,6 +27,7 @@ import javax.sql.DataSource;
 import java.security.SecureRandom;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
@@ -41,6 +49,7 @@ public class PostgresSecretsEngine implements DynamicSecretsEngine {
     private final JdbcTemplate jdbcTemplate;
     private final AuditHelper auditHelper;
     private final SealManager sealManager;
+    private final Clock clock;
 
     // Store leases using UUID as key
     private final ConcurrentHashMap<UUID, Lease> activeLeases = new ConcurrentHashMap<>();
@@ -134,6 +143,12 @@ public class PostgresSecretsEngine implements DynamicSecretsEngine {
         }
     }
 
+    @Retryable(
+        retryFor = {TransientDataAccessException.class, RecoverableDataAccessException.class},
+        maxAttempts = 3,
+        backoff = @Backoff(delay = 500, multiplier = 2.0, maxDelay = 5000)
+    )
+    @Transactional(rollbackFor = {SecretsEngineException.class, DataAccessException.class})
     @Override
     public Lease generateCredentials(String roleName) throws SecretsEngineException, RoleNotFoundException {
         if (sealManager.isSealed()) {
@@ -218,6 +233,7 @@ public class PostgresSecretsEngine implements DynamicSecretsEngine {
         return lease;
     }
 
+    @Transactional(rollbackFor = {SecretsEngineException.class, DataAccessException.class})
     @Override
     public void revokeLease(UUID leaseId) throws SecretsEngineException, LeaseNotFoundException {
         log.info("Attempting to revoke lease with ID: {}", leaseId);
@@ -358,6 +374,46 @@ public class PostgresSecretsEngine implements DynamicSecretsEngine {
             // Do NOT remove the lease from activeLeases here, as DB cleanup failed.
             throw new SecretsEngineException("Failed to execute credential revocation SQL for lease: " + leaseId, e);
         }
+    }
+
+    @Recover
+    public Lease recoverGenerateCredentials(TransientDataAccessException e, String roleName) {
+        log.error("generateCredentials: All retry attempts exhausted for role '{}': {}", roleName, e.getMessage(), e);
+        auditHelper.logInternalEvent("db_operation", "generate_credentials", "failure_after_retries", null,
+                Map.of("role_name", roleName, "error", e.getMessage()));
+        throw new SecretsEngineException("Database unavailable after retries for role: " + roleName, e);
+    }
+
+    @Recover
+    public Lease recoverGenerateCredentialsRecoverable(RecoverableDataAccessException e, String roleName) {
+        log.error("generateCredentials: All retry attempts exhausted for role '{}': {}", roleName, e.getMessage(), e);
+        auditHelper.logInternalEvent("db_operation", "generate_credentials", "failure_after_retries", null,
+                Map.of("role_name", roleName, "error", e.getMessage()));
+        throw new SecretsEngineException("Database unavailable after retries for role: " + roleName, e);
+    }
+
+    @Scheduled(fixedDelayString = "${mssm.secrets.db.postgres.lease-cleanup-interval:PT5M}")
+    public void cleanupExpiredLeases() {
+        if (sealManager.isSealed()) {
+            log.debug("Skipping expired lease cleanup: Vault is sealed.");
+            return;
+        }
+        Instant now = Instant.now(clock);
+        log.debug("Running expired lease cleanup. Active leases: {}", activeLeases.size());
+
+        activeLeases.values().stream()
+                .filter(lease -> lease.getExpirationTime().isBefore(now))
+                .forEach(lease -> {
+                    log.info("Revoking expired lease: {} (role: {}, expired: {})",
+                            lease.id(), lease.roleName(), lease.getExpirationTime());
+                    try {
+                        revokeLease(lease.id());
+                    } catch (LeaseNotFoundException e) {
+                        log.warn("Lease {} already gone during cleanup.", lease.id());
+                    } catch (SecretsEngineException e) {
+                        log.error("Failed to revoke expired lease {}: {}", lease.id(), e.getMessage(), e);
+                    }
+                });
     }
 
     /**
