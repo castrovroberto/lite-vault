@@ -64,14 +64,24 @@ public record MssmProperties(
     // --- StorageProperties ---
     @Validated
     public record StorageProperties(
+            /**
+             * Selects the storage backend implementation.
+             * Supported values: "filesystem" (default), "jdbc".
+             */
+            String backend,
+
             @Valid
-            @NotNull(message = "Filesystem storage configuration (mssm.storage.filesystem) is required.")
             FileSystemProperties filesystem
     ) {
+        public StorageProperties {
+            if (backend == null || backend.isBlank()) {
+                backend = "filesystem";
+            }
+        }
+
         // --- FileSystemProperties ---
         @Validated
         public record FileSystemProperties(
-                @NotBlank(message = "Filesystem storage path (mssm.storage.filesystem.path) must be provided.")
                 String path
         ) {}
     }

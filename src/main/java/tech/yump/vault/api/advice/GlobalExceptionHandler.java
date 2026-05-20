@@ -40,6 +40,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     private static final Pattern DB_CREDS_PATH_PATTERN = Pattern.compile(".*/v1/db/creds/([^/]+)");
     private static final Pattern DB_LEASES_PATH_PATTERN = Pattern.compile(".*/v1/db/leases/([0-9a-fA-F-]+)");
     private static final Pattern KV_PATH_PATTERN = Pattern.compile(".*/v1/kv/data/(.+)");
+    private static final Pattern TRANSIT_PATH_PATTERN = Pattern.compile(".*/v1/transit/(encrypt|decrypt)/([^/]+)");
 
 
     // --- Specific Handlers ---
@@ -245,10 +246,12 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             return "kv_operation";
         } else if (path.startsWith("/v1/db/")) {
             return "db_operation";
-        } else if (path.startsWith("/v1/jwt/")) { // Add JWT
+        } else if (path.startsWith("/v1/jwt/")) {
             return "jwt_operation";
+        } else if (path.startsWith("/v1/transit/")) {
+            return "transit_operation";
         }
-        return "request_error"; // Default type
+        return "request_error";
     }
 
     private String determineActionFromRequest(HttpServletRequest request) {
@@ -257,9 +260,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
         if (path.contains("/v1/db/creds/")) return "generate_credentials";
         if (path.contains("/v1/db/leases/")) return "revoke_lease";
-        if (path.contains("/v1/jwt/sign/")) return "sign_jwt"; // Add JWT
-        if (path.contains("/v1/jwt/rotate/")) return "rotate_jwt_key"; // Add JWT
-        if (path.contains("/v1/jwt/jwks/")) return "get_jwks"; // Add JWT
+        if (path.contains("/v1/jwt/sign/")) return "sign_jwt";
+        if (path.contains("/v1/jwt/rotate/")) return "rotate_jwt_key";
+        if (path.contains("/v1/jwt/jwks/")) return "get_jwks";
+        if (path.contains("/v1/transit/encrypt/")) return "encrypt";
+        if (path.contains("/v1/transit/decrypt/")) return "decrypt";
 
         if (path.contains("/v1/kv/data/")) {
             return switch (method.toUpperCase()) {
@@ -299,7 +304,6 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             return data;
         }
 
-        // Add JWT context extraction
         Pattern jwtKeyPathPattern = Pattern.compile(".*/v1/jwt/(?:sign|rotate|jwks)/([^/]+)");
         Matcher jwtMatcher = jwtKeyPathPattern.matcher(uri);
         if (jwtMatcher.matches()) {
@@ -307,8 +311,13 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             return data;
         }
 
+        Matcher transitMatcher = TRANSIT_PATH_PATTERN.matcher(uri);
+        if (transitMatcher.matches()) {
+            data.put("transit_operation", transitMatcher.group(1));
+            data.put("key_name", transitMatcher.group(2));
+            return data;
+        }
 
-        // Add more specific context extraction if needed
-        return data; // Return empty map if no specific context found
+        return data;
     }
 }

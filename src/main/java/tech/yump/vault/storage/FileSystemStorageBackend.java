@@ -3,7 +3,6 @@ package tech.yump.vault.storage;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import tech.yump.vault.config.MssmProperties;
 
@@ -23,7 +22,6 @@ import java.util.List;
 import java.util.Optional;
 
 @Slf4j
-@Component // Register as a Spring component
 public class FileSystemStorageBackend implements StorageBackend {
 
   private final Path basePath;

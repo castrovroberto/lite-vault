@@ -48,7 +48,7 @@ class FileSystemStorageBackendTest {
             new MssmProperties.StorageProperties.FileSystemProperties(tempStorageDir.toString());
 
     // 2. Storage Properties
-    MssmProperties.StorageProperties storageProps = new MssmProperties.StorageProperties(fsProps);
+    MssmProperties.StorageProperties storageProps = new MssmProperties.StorageProperties("filesystem", fsProps);
 
     // 3. Master Key Properties
     MssmProperties.MasterKeyProperties masterKeyProps =
