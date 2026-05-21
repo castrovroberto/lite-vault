@@ -265,8 +265,8 @@ public class PolicyEnforcementFilter extends OncePerRequestFilter {
         // Define public paths that should bypass this filter entirely
         List<String> publicPaths = List.of(
                 "/sys/seal-status",
-                "/"
-                // Add other truly public paths if needed
+                "/",
+                "/v1/auth/approle/login"
         );
 
         // Define path prefixes that should bypass this filter

@@ -13,8 +13,10 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import tech.yump.vault.audit.AuditBackend; // Added
+import tech.yump.vault.auth.AppRoleAuthFilter;
 import tech.yump.vault.auth.PolicyEnforcementFilter;
 import tech.yump.vault.auth.StaticTokenAuthFilter;
+import tech.yump.vault.auth.approle.AppRoleService;
 import tech.yump.vault.auth.policy.PolicyRepository;
 
 import java.util.Collections;
@@ -29,6 +31,7 @@ public class SecurityConfig {
   private final PolicyRepository policyRepository;
   private final AuditBackend auditBackend;
   private final ObjectMapper objectMapper;
+  private final AppRoleService appRoleService;
 
   @Bean
   public StaticTokenAuthFilter staticTokenAuthFilter() { // Removed AuditBackend from params, use injected field
@@ -45,6 +48,11 @@ public class SecurityConfig {
     }
     // Pass the injected auditBackend to the filter constructor
     return new StaticTokenAuthFilter(effectiveProps, auditBackend); // Modified
+  }
+
+  @Bean
+  public AppRoleAuthFilter appRoleAuthFilter() {
+    return new AppRoleAuthFilter(appRoleService, auditBackend);
   }
 
   @Bean
@@ -70,13 +78,16 @@ public class SecurityConfig {
     if (staticAuthEnabled) {
       log.info("Configuring Spring Security for Static Token Authentication and Policy Enforcement.");
       http
-              // 1. Add Static Token Authentication Filter
+              // 1. AppRole Bearer JWT filter (runs first)
+              .addFilterBefore(appRoleAuthFilter(), StaticTokenAuthFilter.class)
+              // 2. Static token filter
               .addFilterBefore(staticTokenAuthFilter(), UsernamePasswordAuthenticationFilter.class)
-              // 2. Add Policy Enforcement Filter *after* authentication
+              // 3. Policy enforcement (runs after both auth filters)
               .addFilterAfter(policyEnforcementFilter(), StaticTokenAuthFilter.class)
               .authorizeHttpRequests(authorize -> authorize
                       .requestMatchers("/sys/seal-status", "/").permitAll()
                       .requestMatchers("/v1/jwt/jwks/**").permitAll()
+                      .requestMatchers("/v1/auth/approle/login").permitAll()
                       .requestMatchers("/actuator/**").permitAll()
                       .requestMatchers("/v1/**").authenticated()
                       .anyRequest().authenticated()

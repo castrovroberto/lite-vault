@@ -38,7 +38,7 @@ public class StaticTokenAuthFilter extends OncePerRequestFilter {
 
   private final boolean staticAuthEnabled;
   private final List<MssmProperties.AuthProperties.StaticTokenPolicyMapping> tokenMappings;
-  private final List<String> publicPaths = List.of("/sys/seal-status", "/");
+  private final List<String> publicPaths = List.of("/sys/seal-status", "/", "/v1/auth/approle/login");
   private final AuditBackend auditBackend; // Added
 
   /**

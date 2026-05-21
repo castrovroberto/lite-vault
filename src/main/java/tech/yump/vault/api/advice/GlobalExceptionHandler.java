@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 import tech.yump.vault.audit.AuditHelper;
+import tech.yump.vault.auth.approle.AppRoleException;
 import tech.yump.vault.core.VaultSealedException;
 import tech.yump.vault.secrets.LeaseNotFoundException;
 import tech.yump.vault.secrets.RoleNotFoundException;
@@ -151,6 +152,40 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ResponseEntity.status(status).body(problemDetail);
     }
 
+    @ExceptionHandler(AppRoleException.RoleNotFoundException.class)
+    public ResponseEntity<ProblemDetail> handleAppRoleNotFound(AppRoleException.RoleNotFoundException ex, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.NOT_FOUND;
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(status, ex.getMessage());
+        problemDetail.setTitle("AppRole Not Found");
+        log.warn("AppRole not found: {}. Request: {} {}", ex.getMessage(), request.getMethod(), request.getRequestURI());
+        auditHelper.logHttpEvent("approle_operation", determineActionFromRequest(request), "failure",
+                status.value(), ex.getMessage(), extractContextData(request));
+        return ResponseEntity.status(status).body(problemDetail);
+    }
+
+    @ExceptionHandler({AppRoleException.InvalidCredentialsException.class, AppRoleException.SecretIdExhaustedException.class})
+    public ResponseEntity<ProblemDetail> handleAppRoleAuthFailure(AppRoleException ex, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.UNAUTHORIZED;
+        // Return generic message to prevent oracle attacks
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(status, "Invalid AppRole credentials.");
+        problemDetail.setTitle("Authentication Failed");
+        log.warn("AppRole authentication failure at {} {}", request.getMethod(), request.getRequestURI());
+        auditHelper.logHttpEvent("approle_operation", "login", "failure",
+                status.value(), "invalid_credentials", extractContextData(request));
+        return ResponseEntity.status(status).body(problemDetail);
+    }
+
+    @ExceptionHandler(AppRoleException.class)
+    public ResponseEntity<ProblemDetail> handleAppRoleException(AppRoleException ex, HttpServletRequest request) {
+        HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(status, "An AppRole operation error occurred.");
+        problemDetail.setTitle("AppRole Error");
+        log.error("AppRole error: {}. Request: {} {}", ex.getMessage(), request.getMethod(), request.getRequestURI(), ex);
+        auditHelper.logHttpEvent("approle_operation", determineActionFromRequest(request), "failure",
+                status.value(), ex.getMessage(), extractContextData(request));
+        return ResponseEntity.status(status).body(problemDetail);
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ProblemDetail> handleIllegalArgumentException(IllegalArgumentException ex, HttpServletRequest request) {
         HttpStatus status = HttpStatus.BAD_REQUEST;
@@ -250,6 +285,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             return "jwt_operation";
         } else if (path.startsWith("/v1/transit/")) {
             return "transit_operation";
+        } else if (path.startsWith("/v1/auth/approle/")) {
+            return "approle_operation";
         }
         return "request_error";
     }
@@ -258,6 +295,14 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         String path = request.getRequestURI();
         String method = request.getMethod();
 
+        if (path.contains("/v1/auth/approle/login")) return "login";
+        if (path.contains("/v1/auth/approle/role/") && path.endsWith("/secret-id")) return "secret_id_generate";
+        if (path.contains("/v1/auth/approle/role/")) return switch (method.toUpperCase()) {
+            case "GET" -> "role_read";
+            case "POST", "PUT" -> "role_create_or_update";
+            case "DELETE" -> "role_delete";
+            default -> "unknown_approle";
+        };
         if (path.contains("/v1/db/creds/")) return "generate_credentials";
         if (path.contains("/v1/db/leases/")) return "revoke_lease";
         if (path.contains("/v1/jwt/sign/")) return "sign_jwt";
